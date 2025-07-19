@@ -1,0 +1,35 @@
+{
+  "PageFactory Instance": {
+    "prefix": "pfinst",
+    "body": ["const pageFactory = PageFactory.getInstance();"],
+    "description": "Create a constant with reference to PageFactory instance"
+  },
+  "PageFactory Property": {
+    "prefix": "pfprop",
+    "body": [
+      "const ${1:propertyName} = PageFactory.getInstance().${2:pomProperty};"
+    ],
+    "description": "Create a constant with reference to POM singleton instance from PageFactory"
+  },
+  "PageFactory Import": {
+    "prefix": "pfimport",
+    "body": ["import { PageFactory } from '${1:./PageFactory}';"],
+    "description": "Import PageFactory class"
+  },
+  "Page Object Model Class": {
+    "prefix": "pomclass",
+    "body": [
+      "/**",
+      " * ${1:PageName} - Page Object Model class",
+      " */",
+      "export class ${1:PageName} {",
+      "    constructor() {",
+      "        // Initialize page elements and actions",
+      "    }",
+      "",
+      "    // Add page elements and methods here",
+      "}"
+    ],
+    "description": "Create a basic Page Object Model class template"
+  }
+}

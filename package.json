@@ -1,0 +1,50 @@
+{
+  "name": "snapwright-pom-extension",
+  "displayName": "SnapWright POM Generator",
+  "description": "VS Code extension for generating Page Object Model classes and PageFactory patterns",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Snippets",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:snapwright.createPageFactory",
+    "onCommand:snapwright.addPOMToFactory"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "snapwright.createPageFactory",
+        "title": "Create PageFactory",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.addPOMToFactory",
+        "title": "Add POM Classes to PageFactory",
+        "category": "SnapWright"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "typescript",
+        "path": "./snippets/pom-snippets.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  },
+  "author": "",
+  "license": "ISC"
+}
