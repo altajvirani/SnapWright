@@ -13,16 +13,31 @@ A Visual Studio Code extension for generating Page Object Model (POM) classes an
    - Provides a centralized way to access all your page objects
 
 2. **Add POM Classes to PageFactory** (`SnapWright: Add POM Classes to PageFactory`)
+
    - Automatically scans a selected directory for TypeScript POM classes
-   - Adds the selected classes as singleton properties to your PageFactory
+   - **🆕 Smart Duplicate Detection**: Prevents adding classes that already exist
+   - **🆕 Enhanced Feedback**: Shows which classes were skipped due to duplicates
    - Generates getters for easy access to POM instances
+
+3. **🆕 Create PageFactory Instance (Smart Import)** (`SnapWright: Create PageFactory Instance (Smart Import)`)
+   - Intelligently creates PageFactory instance with automatic import handling
+   - Detects existing imports to avoid duplicates
+   - Finds correct relative path to PageFactory automatically
 
 ### Code Snippets
 
 - **`pfinst`** - Creates a constant with reference to the PageFactory instance
 
   ```typescript
-  const pageFactoryInstance = PageFactory.getInstance();
+  const pageFactory = PageFactory.getInstance();
+  ```
+
+- **🆕 `pfinstfull`** - Creates PageFactory instance with explicit import
+
+  ```typescript
+  import { PageFactory } from "./PageFactory";
+
+  const pageFactory = PageFactory.getInstance();
   ```
 
 - **`pfprop`** - Creates a constant with reference to POM singleton instances
@@ -37,7 +52,34 @@ A Visual Studio Code extension for generating Page Object Model (POM) classes an
   import { PageFactory } from "./PageFactory";
   ```
 
+- **🆕 `pfuse`** - Complete PageFactory usage pattern
+
+  ```typescript
+  // Get PageFactory instance
+  const pageFactory = PageFactory.getInstance();
+
+  // Access POM classes
+  const pomInstance = pageFactory.pomProperty;
+
+  // Use POM methods
+  await pomInstance.methodName();
+  ```
+
 - **`pomclass`** - Creates a basic POM class template
+
+### 🆕 Enhanced Edge Case Handling
+
+#### Duplicate Detection
+
+- **Import Detection**: Prevents duplicate imports in PageFactory
+- **Property Detection**: Prevents duplicate private properties
+- **Smart Notifications**: Informs you which classes were skipped
+
+#### Smart Import Management
+
+- **Auto-Detection**: Checks if PageFactory is already imported
+- **Relative Path Resolution**: Finds correct import path automatically
+- **Context-Aware**: Works from any file location in your project
 
 ## Installation & Setup
 

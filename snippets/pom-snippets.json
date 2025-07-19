@@ -1,8 +1,19 @@
 {
   "PageFactory Instance": {
     "prefix": "pfinst",
-    "body": ["const pageFactory = PageFactory.getInstance();"],
-    "description": "Create a constant with reference to PageFactory instance"
+    "body": [
+      "${TM_SELECTED_TEXT}const pageFactory = PageFactory.getInstance();"
+    ],
+    "description": "Create a constant with reference to PageFactory instance (with smart import detection)"
+  },
+  "PageFactory Instance with Import": {
+    "prefix": "pfinstfull",
+    "body": [
+      "import { PageFactory } from '${1:./PageFactory}';",
+      "",
+      "const pageFactory = PageFactory.getInstance();"
+    ],
+    "description": "Create PageFactory instance with explicit import"
   },
   "PageFactory Property": {
     "prefix": "pfprop",
@@ -31,5 +42,19 @@
       "}"
     ],
     "description": "Create a basic Page Object Model class template"
+  },
+  "Smart PageFactory Usage": {
+    "prefix": "pfuse",
+    "body": [
+      "// Get PageFactory instance",
+      "const pageFactory = PageFactory.getInstance();",
+      "",
+      "// Access POM classes",
+      "const ${1:pomInstance} = pageFactory.${2:pomProperty};",
+      "",
+      "// Use POM methods",
+      "await ${1:pomInstance}.${3:methodName}();"
+    ],
+    "description": "Complete PageFactory usage pattern with POM access"
   }
 }

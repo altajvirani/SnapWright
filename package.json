@@ -12,7 +12,8 @@
   ],
   "activationEvents": [
     "onCommand:snapwright.createPageFactory",
-    "onCommand:snapwright.addPOMToFactory"
+    "onCommand:snapwright.addPOMToFactory",
+    "onCommand:snapwright.createPageFactoryInstance"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -25,6 +26,11 @@
       {
         "command": "snapwright.addPOMToFactory",
         "title": "Add POM Classes to PageFactory",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.createPageFactoryInstance",
+        "title": "Create PageFactory Instance (Smart Import)",
         "category": "SnapWright"
       }
     ],
