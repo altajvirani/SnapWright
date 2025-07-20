@@ -1,31 +1,29 @@
 {
   "PageFactory Instance": {
     "prefix": "pfinst",
-    "body": [
-      "${TM_SELECTED_TEXT}const pageFactory = PageFactory.getInstance();"
-    ],
-    "description": "Create a constant with reference to PageFactory instance (with smart import detection)"
+    "body": ["const pageFactory = PageFactory.instance;"],
+    "description": "Create a constant with reference to PageFactory instance"
   },
   "PageFactory Instance with Import": {
     "prefix": "pfinstfull",
     "body": [
-      "import { PageFactory } from '${1:./PageFactory}';",
+      "import { pageFactory } from '${1:./PageFactory}';",
       "",
-      "const pageFactory = PageFactory.getInstance();"
+      "// Usage: pageFactory.setPage(page);"
     ],
-    "description": "Create PageFactory instance with explicit import"
+    "description": "Import PageFactory instance with usage example"
   },
   "PageFactory Property": {
     "prefix": "pfprop",
-    "body": [
-      "const ${1:propertyName} = PageFactory.getInstance().${2:pomProperty};"
-    ],
+    "body": ["const ${1:propertyName} = pageFactory.${2:pomProperty};"],
     "description": "Create a constant with reference to POM singleton instance from PageFactory"
   },
-  "PageFactory Import": {
+  "PageFactory Direct Import": {
     "prefix": "pfimport",
-    "body": ["import { PageFactory } from '${1:./PageFactory}';"],
-    "description": "Import PageFactory class"
+    "body": [
+      "import { ${1:pageFactory, setPage, page} } from '${2:./PageFactory}';"
+    ],
+    "description": "Import PageFactory exports directly"
   },
   "Page Object Model Class": {
     "prefix": "pomclass",
@@ -43,18 +41,30 @@
     ],
     "description": "Create a basic Page Object Model class template"
   },
-  "Smart PageFactory Usage": {
-    "prefix": "pfuse",
+  "Smart PageFactory Setup": {
+    "prefix": "pfsetup",
     "body": [
-      "// Get PageFactory instance",
-      "const pageFactory = PageFactory.getInstance();",
+      "import { pageFactory, setPage, page } from '${1:./PageFactory}';",
       "",
-      "// Access POM classes",
-      "const ${1:pomInstance} = pageFactory.${2:pomProperty};",
+      "// Setup page in test",
+      "setPage(${2:yourPageInstance});",
       "",
-      "// Use POM methods",
-      "await ${1:pomInstance}.${3:methodName}();"
+      "// Access POM instances",
+      "const ${3:pomInstance} = pageFactory.${4:pomProperty};"
     ],
-    "description": "Complete PageFactory usage pattern with POM access"
+    "description": "Complete PageFactory setup pattern with Playwright integration"
+  },
+  "Page Setup": {
+    "prefix": "pfpage",
+    "body": [
+      "import { setPage, page } from '${1:./PageFactory}';",
+      "",
+      "// In your test setup",
+      "setPage(${2:browserPage});",
+      "",
+      "// Access page anywhere",
+      "const currentPage = page;"
+    ],
+    "description": "Page setup and access pattern"
   }
 }

@@ -1,6 +1,57 @@
 # SnapWright POM Extension
 
-A Visual Studio Code extension for generating Page Object Model (POM) classes and PageFactory patterns for test automation.
+A Visual Studio Code extension for generating Page Object Model (POM) classes and PageFactory patterns for test automation with **Playwright integration**.
+
+## � Playwright-Integrated PageFactory Pattern
+
+The extension generates a modern PageFactory with **Playwright integration** and **direct exports**:
+
+```typescript
+import { type Page } from "@playwright/test";
+
+class PageFactory {
+  private static _instance: PageFactory;
+  private _globalPage: Page;
+  private _homepage: HomePage;
+
+  public static get instance() {
+    if (!PageFactory._instance) PageFactory.setInstance();
+    return PageFactory._instance;
+  }
+
+  public setPage(page: Page) {
+    this._globalPage = page;
+  }
+
+  public get page(): Page {
+    if (!this._globalPage)
+      throw new Error("Page not set. Use setPage(page) first.");
+    return this._globalPage;
+  }
+
+  public get homePage(): HomePage {
+    if (!this._homepage) this._homepage = new HomePage();
+    return this._homepage;
+  }
+}
+
+export const pageFactory = PageFactory.instance;
+export const setPage = PageFactory.instance.setPage;
+export const page = PageFactory.instance.page;
+export const homePage = PageFactory.instance.homePage;
+```
+
+### 🎯 **Usage in Tests:**
+
+```typescript
+import { test } from "@playwright/test";
+import { setPage, homePage } from "./PageFactory";
+
+test("example test", async ({ page }) => {
+  setPage(page); // Set global page once
+  await homePage.navigate(); // Use POM directly
+});
+```
 
 ## Features
 
@@ -15,59 +66,56 @@ A Visual Studio Code extension for generating Page Object Model (POM) classes an
 2. **Add POM Classes to PageFactory** (`SnapWright: Add POM Classes to PageFactory`)
 
    - Automatically scans a selected directory for TypeScript POM classes
-   - **🆕 Smart Duplicate Detection**: Prevents adding classes that already exist
-   - **🆕 Enhanced Feedback**: Shows which classes were skipped due to duplicates
+   - **Smart Duplicate Detection**: Prevents adding classes that already exist
+   - **Enhanced Feedback**: Shows which classes were skipped due to duplicates
    - Generates getters for easy access to POM instances
 
-3. **🆕 Create PageFactory Instance (Smart Import)** (`SnapWright: Create PageFactory Instance (Smart Import)`)
+3. **Create PageFactory Instance (Smart Import)** (`SnapWright: Create PageFactory Instance (Smart Import)`)
    - Intelligently creates PageFactory instance with automatic import handling
    - Detects existing imports to avoid duplicates
    - Finds correct relative path to PageFactory automatically
 
 ### Code Snippets
 
-- **`pfinst`** - Creates a constant with reference to the PageFactory instance
+- **`pfinst`** - Creates a constant reference to the PageFactory instance
 
   ```typescript
-  const pageFactory = PageFactory.getInstance();
+  const pf = pageFactory;
   ```
 
-- **🆕 `pfinstfull`** - Creates PageFactory instance with explicit import
+- **`pfsetup`** - Complete setup with imports and page initialization
 
   ```typescript
-  import { PageFactory } from "./PageFactory";
+  import { setPage, pageFactory } from "./PageFactory";
 
-  const pageFactory = PageFactory.getInstance();
+  // In your test setup
+  setPage(page);
   ```
 
-- **`pfprop`** - Creates a constant with reference to POM singleton instances
+- **`pfpage`** - Global page access pattern
 
   ```typescript
-  const propertyName = PageFactory.getInstance().pomProperty;
+  import { page } from "./PageFactory";
+
+  // Use global page directly
+  await page.goto("/login");
   ```
 
-- **`pfimport`** - Imports the PageFactory class
+- **`pfimport`** - Import PageFactory utilities
 
   ```typescript
-  import { PageFactory } from "./PageFactory";
+  import { pageFactory, setPage, page } from "./PageFactory";
   ```
 
-- **🆕 `pfuse`** - Complete PageFactory usage pattern
+- **`pfprop`** - Access POM instances from PageFactory
 
   ```typescript
-  // Get PageFactory instance
-  const pageFactory = PageFactory.getInstance();
-
-  // Access POM classes
-  const pomInstance = pageFactory.pomProperty;
-
-  // Use POM methods
-  await pomInstance.methodName();
+  const loginPage = pageFactory.loginPage;
   ```
 
 - **`pomclass`** - Creates a basic POM class template
 
-### 🆕 Enhanced Edge Case Handling
+### 🔧 Enhanced Edge Case Handling
 
 #### Duplicate Detection
 
@@ -130,71 +178,94 @@ In any TypeScript file:
 ### Generated PageFactory.ts
 
 ```typescript
+import { type Page } from "@playwright/test";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 
-export class PageFactory {
-  private static instance: PageFactory;
+class PageFactory {
+  private static _instance: PageFactory;
+  private _globalPage: Page;
+  private _loginpage: LoginPage;
+  private _homepage: HomePage;
+  private _profilepage: ProfilePage;
 
-  private constructor() {
-    // Private constructor to prevent direct instantiation
+  private constructor() {}
+
+  private static setInstance() {
+    PageFactory._instance = new PageFactory();
   }
 
-  private _loginpage: LoginPage | undefined;
-  private _homepage: HomePage | undefined;
-  private _profilepage: ProfilePage | undefined;
-
-  public static getInstance(): PageFactory {
-    if (!PageFactory.instance) {
-      PageFactory.instance = new PageFactory();
-    }
-    return PageFactory.instance;
+  public static get instance() {
+    if (!PageFactory._instance) PageFactory.setInstance();
+    return PageFactory._instance;
   }
 
-  public get loginpage(): LoginPage {
-    if (!this._loginpage) {
-      this._loginpage = new LoginPage();
-    }
+  public setPage(page: Page) {
+    this._globalPage = page;
+  }
+
+  public get page(): Page {
+    if (!this._globalPage)
+      throw new Error("Page not set. Use setPage(page) first.");
+    return this._globalPage;
+  }
+
+  public get loginPage(): LoginPage {
+    if (!this._loginpage) this._loginpage = new LoginPage();
     return this._loginpage;
   }
 
-  public get homepage(): HomePage {
-    if (!this._homepage) {
-      this._homepage = new HomePage();
-    }
+  public get homePage(): HomePage {
+    if (!this._homepage) this._homepage = new HomePage();
     return this._homepage;
   }
 
-  public get profilepage(): ProfilePage {
-    if (!this._profilepage) {
-      this._profilepage = new ProfilePage();
-    }
+  public get profilePage(): ProfilePage {
+    if (!this._profilepage) this._profilepage = new ProfilePage();
     return this._profilepage;
   }
 }
 
-export const pageFactory = PageFactory.getInstance();
+export const pageFactory = PageFactory.instance;
+export const setPage = pageFactory.setPage.bind(pageFactory);
+export const page = pageFactory.page;
+export const loginPage = pageFactory.loginPage;
+export const homePage = pageFactory.homePage;
+export const profilePage = pageFactory.profilePage;
 ```
 
 ### Using in Tests
 
 ```typescript
-import { PageFactory } from "./PageFactory";
+import { test } from "@playwright/test";
+import { setPage, loginPage, homePage } from "./PageFactory";
 
-// Using pfinst snippet
-const pageFactoryInstance = PageFactory.getInstance();
+test("login flow test", async ({ page }) => {
+  // Set global page once
+  setPage(page);
 
-// Using pfprop snippet
-const loginPage = PageFactory.getInstance().loginpage;
-const homePage = PageFactory.getInstance().homepage;
-
-// Test example
-async function loginTest() {
+  // Use POM classes directly - they automatically use the global page
+  await loginPage.navigate();
   await loginPage.login("username", "password");
+
+  // Verify login success
   const isLoggedIn = await homePage.isLoggedIn();
   console.log("Login successful:", isLoggedIn);
-}
+});
+
+// Alternative: Using pageFactory instance
+import { pageFactory, setPage } from "./PageFactory";
+
+test("using pageFactory instance", async ({ page }) => {
+  setPage(page);
+
+  const login = pageFactory.loginPage;
+  const home = pageFactory.homePage;
+
+  await login.login("username", "password");
+  await home.navigate();
+});
 ```
 
 ## Development
