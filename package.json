@@ -1,8 +1,27 @@
 {
-  "name": "snapwright-pom-extension",
+  "name": "snapwright",
   "displayName": "SnapWright POM Generator",
-  "description": "VS Code extension for generating Page Object Model classes and PageFactory patterns",
+  "description": "Generate Page Object Model classes and PageFactory patterns for Playwright test automation with smart duplicate detection and code snippets",
   "version": "1.0.0",
+  "publisher": "altajvirani",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/altajvirani/snapwright.git"
+  },
+  "homepage": "https://github.com/altajvirani/snapwright#readme",
+  "bugs": {
+    "url": "https://github.com/altajvirani/snapwright/issues"
+  },
+  "keywords": [
+    "playwright",
+    "page-object-model",
+    "test-automation",
+    "pom",
+    "pageFactory",
+    "code-generator",
+    "testing",
+    "typescript"
+  ],
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -51,6 +70,14 @@
     "@types/node": "16.x",
     "typescript": "^4.9.4"
   },
-  "author": "",
-  "license": "ISC"
+  "author": {
+    "name": "Altaj Virani",
+    "email": "altajvirani@example.com"
+  },
+  "license": "MIT",
+  "icon": "SnapWright_Logo.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  }
 }

@@ -1,23 +1,35 @@
-# Changelog
+# Change Log
 
-All notable changes to the SnapWright POM Extension will be documented in this file.
+All notable changes to the "SnapWright POM Generator" extension will be documented in this file.
 
-## [1.0.0] - 2025-07-19
+## [1.0.0] - 2025-01-20
 
 ### Added
 
-- **Create PageFactory Command**: Command palette option to create a PageFactory.ts file with singleton pattern
-- **Add POM Classes to PageFactory Command**: Automatically scan directories and add POM classes to PageFactory
-- **Code Snippets**:
-  - `pfinst`: Creates PageFactory instance reference
-  - `pfprop`: Creates POM property reference
-  - `pfimport`: Imports PageFactory class
-  - `pomclass`: Creates POM class template
-- **Automatic Code Generation**:
-  - Generates singleton getters for POM classes
-  - Adds proper imports and type definitions
-  - Creates private instance properties
-- **Directory Selection**: Interactive directory picker for file creation
+- **Playwright Integration**: Full support for Playwright Page objects with TypeScript types
+- **PageFactory Generation**: Create PageFactory with modern singleton pattern and direct exports
+- **Smart POM Integration**: Add existing POM classes to PageFactory with duplicate detection
+- **Code Snippets**: 6 essential snippets for rapid development (`pfinst`, `pfsetup`, `pfpage`, `pfimport`, `pfprop`, `pomclass`)
+- **Global Page Management**: Set page once, use everywhere across all POM classes
+- **Enhanced Duplicate Detection**: Prevents duplicate imports and properties
+- **Smart Import Management**: Auto-detects existing imports and resolves relative paths
+- **Command Palette Integration**: Three main commands for complete workflow
+- **TypeScript Support**: Full TypeScript integration with proper type safety
+
+### Features
+
+- **Create PageFactory**: Generate PageFactory with Playwright integration
+- **Add POM Classes**: Automatically scan and add POM classes with smart detection
+- **Create PageFactory Instance**: Smart import handling for PageFactory references
+- **Direct Exports**: Import exactly what you need from PageFactory
+- **Auto-instantiation**: POM classes created on first access and reused
+
+### Documentation
+
+- Comprehensive usage guide with examples
+- Best practices for project organization
+- Troubleshooting guide
+- Example workflows for different scenarios
 - **Multi-selection**: Choose multiple POM classes to add at once
 - **Example POM Classes**: Sample LoginPage, HomePage, and ProfilePage classes
 - **Documentation**: Comprehensive README and usage guide
