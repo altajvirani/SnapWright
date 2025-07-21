@@ -13,11 +13,6 @@
     ],
     "description": "Import PageFactory instance with usage example"
   },
-  "PageFactory Property": {
-    "prefix": "pfprop",
-    "body": ["const ${1:propertyName} = pageFactory.${2:pomProperty};"],
-    "description": "Create a constant with reference to POM singleton instance from PageFactory"
-  },
   "PageFactory Direct Import": {
     "prefix": "pfimport",
     "body": [
@@ -49,10 +44,10 @@
       "// Setup page in test",
       "setPage(${2:yourPageInstance});",
       "",
-      "// Access POM instances",
-      "const ${3:pomInstance} = pageFactory.${4:pomProperty};"
+      "// Access POM instances using Command Palette:",
+      "// Ctrl+Shift+P -> 'SnapWright: Use POM from PageFactory'"
     ],
-    "description": "Complete PageFactory setup pattern with Playwright integration"
+    "description": "Complete PageFactory setup pattern with Command Palette guidance"
   },
   "Page Setup": {
     "prefix": "pfpage",

@@ -1,8 +1,8 @@
 {
   "name": "snapwright",
-  "displayName": "SnapWright POM Generator",
-  "description": "Generate Page Object Model classes and PageFactory patterns for Playwright test automation with smart duplicate detection and code snippets",
-  "version": "1.0.0",
+  "displayName": "SnapWright",
+  "description": "Playwright TypeScript productivity booster - Generate PageFactory patterns and Page Object Models with ease",
+  "version": "1.3.0",
   "publisher": "altajvirani",
   "repository": {
     "type": "git",
@@ -14,42 +14,46 @@
   },
   "keywords": [
     "playwright",
+    "typescript",
     "page-object-model",
     "test-automation",
+    "e2e-testing",
     "pom",
     "pageFactory",
+    "productivity",
     "code-generator",
-    "testing",
-    "typescript"
+    "testing-tools"
   ],
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
     "Snippets",
+    "Testing",
+    "Programming Languages",
     "Other"
-  ],
-  "activationEvents": [
-    "onCommand:snapwright.createPageFactory",
-    "onCommand:snapwright.addPOMToFactory",
-    "onCommand:snapwright.createPageFactoryInstance"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "snapwright.createPageFactory",
-        "title": "Create PageFactory",
+        "title": "Create Playwright PageFactory",
         "category": "SnapWright"
       },
       {
         "command": "snapwright.addPOMToFactory",
-        "title": "Add POM Classes to PageFactory",
+        "title": "Add Page Objects to Factory",
         "category": "SnapWright"
       },
       {
-        "command": "snapwright.createPageFactoryInstance",
-        "title": "Create PageFactory Instance (Smart Import)",
+        "command": "snapwright.createPOMClass",
+        "title": "Create Page Object Class",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.usePOMFromFactory",
+        "title": "Use POM from PageFactory",
         "category": "SnapWright"
       }
     ],

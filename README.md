@@ -1,18 +1,87 @@
-# SnapWright POM Extension
+# SnapWright
 
-A Visual Studio Code extension for generating Page Object Model (POM) classes and PageFactory patterns for test automation with **Playwright integration**.
+A Visual Studio Code extension that supercharges your Playwright TypeScript development with automated Page Object Model generation and intelligent PageFactory patterns.
 
-## � Playwright-Integrated PageFactory Pattern
+## 🚀 Playwright TypeScript Productivity Booster
 
-The extension generates a modern PageFactory with **Playwright integration** and **direct exports**:
+**SnapWright** streamlines your Playwright test automation workflow by providing intelligent code generation tools for Page Object Models and Factory patterns with smart Command Palette integration.
+
+## ✨ Key Features
+
+### 🎯 **Smart Command Palette Integration**
+
+- **Dynamic POM Discovery**: Automatically reads your PageFactory and suggests available POM classes
+- **Interactive Selection**: Choose from real POM getters with/without page parameters
+- **Intelligent Import Management**: Auto-adds imports at proper locations
+- **Cursor-Based Insertion**: Place const assignments exactly where you need them
+
+### 🏗️ **Project Setup Commands**
+
+- **Create PageFactory**: Generate singleton PageFactory with worker isolation
+- **Add POMs to Factory**: Integrate existing Page Object Models
+- **Create POM Classes**: Generate new Page Object Model class templates
+
+### 🔧 **Code Generation Tools**
+
+- **camelCase Variables**: Proper JavaScript/TypeScript naming conventions
+- **Smart Import Positioning**: Respects comments, ESLint configs, and existing imports
+- **Flexible Page Parameters**: Support for both parameterized and global page usage
+
+## 🎮 Quick Start
+
+### 1. Create Your PageFactory
+
+Open Command Palette (`Ctrl+Shift+P`) and run:
+
+```
+SnapWright: Create Playwright PageFactory
+```
+
+### 2. Add POM Classes
+
+```
+SnapWright: Add Page Objects to Factory
+```
+
+### 3. Use POMs in Your Tests
+
+1. **Open Command Palette**: `Ctrl+Shift+P`
+2. **Search**: "Use POM from PageFactory"
+3. **Select**: Your desired POM with/without page parameter
+4. **Import Added**: Automatically placed at top of file
+5. **Place Cursor**: Move cursor where you want the const assignment
+6. **Click**: "Insert Here" to complete
+
+## 💡 Example Workflow
+
+```typescript
+// 1. Command Palette → "SnapWright: Use POM from PageFactory"
+// 2. Select: "const topicsPage = getTopicsPage(page)"
+// 3. Result:
+
+import { getTopicsPage } from "./PageFactory";
+import { test } from "@playwright/test";
+
+test("My test", async ({ page }) => {
+  const topicsPage = getTopicsPage(page); // ← Auto-inserted at cursor
+
+  await topicsPage.navigate();
+  await topicsPage.performAction();
+});
+```
+
+## 📋 Generated PageFactory Structure
+
+SnapWright generates a robust PageFactory with worker isolation support:
 
 ```typescript
 import { type Page } from "@playwright/test";
+import { TopicsPage } from "./topics.page";
 
 class PageFactory {
   private static _instance: PageFactory;
   private _globalPage: Page;
-  private _homepage: HomePage;
+  private _topicsPage: TopicsPage;
 
   public static get instance() {
     if (!PageFactory._instance) PageFactory.setInstance();
@@ -29,83 +98,251 @@ class PageFactory {
     return this._globalPage;
   }
 
-  public get homePage(): HomePage {
-    if (!this._homepage) this._homepage = new HomePage();
-    return this._homepage;
+  private ensurePageSet(page?: Page): void {
+    if (!this._globalPage) {
+      if (!page) throw new Error("Page not set. Use setPage(page) first.");
+      this.setPage(page);
+    }
+  }
+
+  public getTopicsPage(page?: Page): TopicsPage {
+    this.ensurePageSet(page);
+    if (!this._topicsPage) this._topicsPage = new TopicsPage();
+    return this._topicsPage;
   }
 }
 
 export const pageFactory = PageFactory.instance;
-export const setPage = PageFactory.instance.setPage;
-export const page = PageFactory.instance.page;
-export const homePage = PageFactory.instance.homePage;
+export const setPage = pageFactory.setPage.bind(pageFactory);
+export const page = pageFactory.page;
+export const getTopicsPage = pageFactory.getTopicsPage.bind(pageFactory);
 ```
 
-### 🎯 **Usage in Tests:**
+## 🎯 Usage Patterns
+
+### Pattern 1: Global Page Setup
 
 ```typescript
 import { test } from "@playwright/test";
-import { setPage, homePage } from "./PageFactory";
+import { setPage, getTopicsPage } from "./PageFactory";
 
-test("example test", async ({ page }) => {
-  setPage(page); // Set global page once
-  await homePage.navigate(); // Use POM directly
+test("using global page", async ({ page }) => {
+  setPage(page); // Set once
+
+  const topicsPage = getTopicsPage(); // Uses global page
+  await topicsPage.navigate();
 });
 ```
 
-## Features
+### Pattern 2: Explicit Page Parameter
 
-### Command Palette Commands
+```typescript
+import { test } from "@playwright/test";
+import { getTopicsPage } from "./PageFactory";
 
-1. **Create PageFactory** (`SnapWright: Create PageFactory`)
+test("using explicit page", async ({ page }) => {
+  const topicsPage = getTopicsPage(page); // Pass page explicitly
+  await topicsPage.navigate();
+});
+```
 
-   - Creates a `PageFactory.ts` file in your selected directory
-   - Implements a singleton pattern for managing POM instances
-   - Provides a centralized way to access all your page objects
+### Pattern 3: Parallel Test Support
 
-2. **Add POM Classes to PageFactory** (`SnapWright: Add POM Classes to PageFactory`)
+```typescript
+import { test } from "@playwright/test";
+import { getTopicsPage } from "./PageFactory";
 
-   - Automatically scans a selected directory for TypeScript POM classes
-   - **Smart Duplicate Detection**: Prevents adding classes that already exist
-   - **Enhanced Feedback**: Shows which classes were skipped due to duplicates
-   - Generates getters for easy access to POM instances
+test.describe.configure({ mode: "parallel" });
 
-3. **Create PageFactory Instance (Smart Import)** (`SnapWright: Create PageFactory Instance (Smart Import)`)
-   - Intelligently creates PageFactory instance with automatic import handling
-   - Detects existing imports to avoid duplicates
-   - Finds correct relative path to PageFactory automatically
+test("parallel test 1", async ({ page }) => {
+  const topicsPage = getTopicsPage(page); // Worker-isolated
+});
 
-### Code Snippets
+test("parallel test 2", async ({ page }) => {
+  const topicsPage = getTopicsPage(page); // Worker-isolated
+});
+```
 
-- **`pfinst`** - Creates a constant reference to the PageFactory instance
+## 🛠️ Available Commands
 
-  ```typescript
-  const pf = pageFactory;
-  ```
+### Project Setup Commands
 
-- **`pfsetup`** - Complete setup with imports and page initialization
+#### 1. **Create PageFactory**
 
-  ```typescript
-  import { setPage, pageFactory } from "./PageFactory";
+```
+Command: SnapWright: Create Playwright PageFactory
+```
 
-  // In your test setup
-  setPage(page);
-  ```
+- Creates a singleton PageFactory with worker isolation support
+- Implements `ensurePageSet()` helper for flexible page management
+- Generates proper TypeScript imports and exports
 
-- **`pfpage`** - Global page access pattern
+#### 2. **Add POM Classes to PageFactory**
 
-  ```typescript
-  import { page } from "./PageFactory";
+```
+Command: SnapWright: Add Page Objects to Factory
+```
 
-  // Use global page directly
-  await page.goto("/login");
-  ```
+- Scans directory for existing POM classes
+- Smart duplicate detection prevents conflicts
+- Auto-generates getter methods with proper typing
+- Binds methods for export convenience
 
-- **`pfimport`** - Import PageFactory utilities
+#### 3. **Create POM Class**
 
-  ```typescript
-  import { pageFactory, setPage, page } from "./PageFactory";
-  ```
+```
+Command: SnapWright: Create Page Object Class
+```
+
+- Generates new POM class templates
+- Follows Playwright best practices
+- Includes constructor and method stubs
+
+### Smart Usage Commands
+
+#### 4. **Use POM from PageFactory** ⭐ New!
+
+```
+Command: SnapWright: Use POM from PageFactory
+```
+
+**Interactive Workflow:**
+
+1. **Dynamic Discovery**: Reads your actual PageFactory exports
+2. **Smart Selection**: Choose POM with/without page parameter
+3. **Auto Import**: Adds imports at proper file location
+4. **Cursor Placement**: You control exactly where const goes
+5. **camelCase Variables**: Follows proper naming conventions
+
+**Example Options:**
+
+- `const topicsPage = getTopicsPage()`
+- `const topicsPage = getTopicsPage(page)`
+- `const homePage = getHomePage()`
+- `const loginPage = getLoginPage(page)`
+
+## 📋 Code Snippets
+
+SnapWright includes useful snippets for common patterns:
+
+- **`pfinst`** - PageFactory instance reference
+- **`pfimport`** - Direct PageFactory imports
+- **`pfsetup`** - Complete setup with imports
+- **`pomclass`** - New POM class template
+- **`pfpage`** - Page setup pattern
+
+## 🎨 Smart Features
+
+### ✅ **Intelligent Import Management**
+
+- Detects existing imports to avoid duplicates
+- Places imports after comments and ESLint configs
+- Calculates correct relative paths automatically
+- Respects file structure and formatting
+
+### ✅ **Worker Isolation Support**
+
+- `ensurePageSet()` helper method for parallel tests
+- Flexible page parameter handling
+- Global page fallback with explicit page option
+- Thread-safe POM instance management
+
+### ✅ **Developer Experience**
+
+- Command Palette integration for discoverability
+- Interactive selection with clear descriptions
+- Real-time feedback and confirmation messages
+- Error handling with helpful guidance
+
+## 🚀 Installation
+
+1. **From VS Code Marketplace**: Search "SnapWright" in Extensions panel
+2. **From Command Line**: `code --install-extension altajvirani.snapwright`
+3. **Manual**: Download `.vsix` from [GitHub Releases](https://github.com/altajvirani/snapwright/releases)
+
+## 📁 Project Structure
+
+```text
+SnapWright/
+├── src/
+│   └── extension.ts          # Main extension logic
+├── snippets/
+│   └── pom-snippets.json     # Code snippets
+├── examples/
+│   └── pages/                # Sample POM classes
+├── docs/                     # Documentation
+├── package.json              # Extension manifest
+└── README.md                 # This file
+```
+
+## 🔧 Development
+
+### Building from Source
+
+```bash
+git clone https://github.com/altajvirani/snapwright.git
+cd snapwright
+npm install
+npm run compile
+```
+
+### Testing
+
+```bash
+# Watch mode for development
+npm run watch
+
+# Open in VS Code Extension Host
+# Press F5 in VS Code to launch Extension Host
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open Pull Request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙋‍♂️ Support
+
+- **Issues**: [GitHub Issues](https://github.com/altajvirani/snapwright/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/altajvirani/snapwright/discussions)
+- **Email**: altajvirani@example.com
+
+## 🏷️ Changelog
+
+### v1.3.0 (Latest)
+
+- ✨ **New**: Command Palette integration for POM usage
+- ✨ **New**: Interactive POM selection with real-time discovery
+- ✨ **New**: Smart import management with proper positioning
+- ✨ **New**: camelCase variable naming conventions
+- ✨ **Improved**: Worker isolation support with `ensurePageSet()`
+- 🗑️ **Removed**: Hardcoded typing patterns in favor of dynamic approach
+
+### v1.2.0
+
+- ✨ Added PageFactory singleton pattern
+- ✨ Enhanced POM class integration
+- 🐛 Fixed import path resolution
+
+### v1.1.0
+
+- ✨ Initial POM generation features
+- ✨ Basic snippets support
+
+---
+
+**Made with ❤️ for the Playwright Testing Community**
+
+```typescript
+import { pageFactory, setPage, page } from "./PageFactory";
+```
 
 - **`pfprop`** - Access POM instances from PageFactory
 

@@ -1,4 +1,4 @@
-# SnapWright POM Extension - Complete Usage Guide
+# SnapWright - Complete Usage Guide
 
 ## Quick Start
 
@@ -45,19 +45,28 @@ export class LoginPage {
 
 ```typescript
 import { test } from "@playwright/test";
-import { setPage, loginPage, homePage } from "./PageFactory";
+import { getLoginPage, getHomePage } from "./PageFactory";
 
 test("user login flow", async ({ page }) => {
-  // Set global page once - makes it available to all POM classes
-  setPage(page);
+  // Option 1: Pass page to each getter for explicit page setting
+  await getLoginPage(page).navigate();
+  await getLoginPage().login("testuser", "password123");
 
-  // Use POM classes directly - they automatically use the global page
-  await loginPage.navigate();
-  await loginPage.login("testuser", "password123");
+  // Option 2: Set page once, then use without page parameter
+  await getHomePage(page).navigate();
+  expect(await getHomePage().isLoggedIn()).toBe(true);
+});
 
-  // Verify navigation to home page
-  await homePage.navigate();
-  expect(await homePage.isLoggedIn()).toBe(true);
+test("multi-page scenario", async ({ page, context }) => {
+  // Use different pages for different actions
+  const newPage = await context.newPage();
+
+  await getLoginPage(page).navigate();
+  await getHomePage(newPage).navigate();
+
+  // Continue using previous page contexts
+  await getLoginPage().login("user", "pass"); // Uses 'page'
+  await getHomePage().verifyHomePage(); // Uses 'newPage'
 });
 ```
 
@@ -150,7 +159,15 @@ class PageFactory {
     return this._loginPage;
   }
 
-  public get homePage(): HomePage {
+  private ensurePageSet(page?: Page): void {
+    if (!this._globalPage) {
+      if (!page) throw new Error("Page not set. Use setPage(page) first.");
+      this.setPage(page);
+    }
+  }
+
+  public getHomePage(page?: Page): HomePage {
+    this.ensurePageSet(page);
     if (!this._homePage) this._homePage = new HomePage();
     return this._homePage;
   }
@@ -159,8 +176,8 @@ class PageFactory {
 export const pageFactory = PageFactory.instance;
 export const setPage = pageFactory.setPage.bind(pageFactory);
 export const page = pageFactory.page;
-export const loginPage = pageFactory.loginPage;
-export const homePage = pageFactory.homePage;
+export const getLoginPage = pageFactory.getLoginPage;
+export const getHomePage = pageFactory.getHomePage;
 ```
 
 ## Commands Available
@@ -242,22 +259,17 @@ export class LoginPage {
 
 ```typescript
 import { test, expect } from "@playwright/test";
-import { setPage, loginPage, homePage, profilePage } from "./PageFactory";
+import { getLoginPage, getHomePage, getProfilePage } from "./PageFactory";
 
 test.describe("User Management", () => {
-  test.beforeEach(async ({ page }) => {
-    // Set global page once per test
-    setPage(page);
-  });
-
-  test("complete user flow", async () => {
-    // Login
-    await loginPage.navigateToLogin();
-    await loginPage.enterCredentials("testuser", "password");
+  test("complete user flow", async ({ page }) => {
+    // Use getters with page parameter for explicit control
+    await getLoginPage(page).navigateToLogin();
+    await getLoginPage().enterCredentials("testuser", "password");
 
     // Navigate to profile
-    await homePage.navigateToProfile();
-    await profilePage.updateEmail("new@email.com");
+    await getHomePage().navigateToProfile();
+    await getProfilePage().updateEmail("new@email.com");
 
     // Verify changes
     expect(await profilePage.getEmail()).toBe("new@email.com");
