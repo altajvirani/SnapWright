@@ -2,8 +2,14 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 
+// Global variable to store extension context for state management
+let extensionContext: vscode.ExtensionContext;
+
 export function activate(context: vscode.ExtensionContext) {
   console.log("SnapWright extension is now active!");
+
+  // Store context for state management
+  extensionContext = context;
 
   // Register command to create PageFactory
   let createPageFactoryCommand = vscode.commands.registerCommand(
@@ -99,15 +105,10 @@ async function addPOMToFactory() {
       return;
     }
 
-    // Check if PageFactory exists first - before asking user to select anything
-    const pageFactoryPath = await findPageFactory(
-      workspaceFolders[0].uri.fsPath
-    );
+    // Select PageFactory using the new path management system
+    const pageFactoryPath = await selectPageFactoryPath();
     if (!pageFactoryPath) {
-      vscode.window.showErrorMessage(
-        "PageFactory.ts not found. Please create it first."
-      );
-      return;
+      return; // User cancelled selection
     }
 
     // Show directory picker for POM classes
@@ -508,7 +509,7 @@ async function createPageFactoryInstance() {
 
   // Add import if not present
   if (!hasPageFactoryImport) {
-    // Try to find PageFactory.ts in the workspace
+    // Use the new path management system to find PageFactory
     const pageFactoryPath = await findPageFactoryRelativePath(
       document.uri.fsPath
     );
@@ -537,6 +538,20 @@ await getLoginPage().login("user", "pass");`;
 async function findPageFactoryRelativePath(
   currentFilePath: string
 ): Promise<string | null> {
+  // Try to get saved PageFactory paths first
+  const savedPaths = await getSavedPageFactoryPaths();
+
+  if (savedPaths.length > 0) {
+    // Use the first saved path (most recently used)
+    const pageFactoryPath = savedPaths[0].path;
+    const relativePath = path.relative(
+      path.dirname(currentFilePath),
+      pageFactoryPath
+    );
+    return relativePath.replace(/\\/g, "/").replace(".ts", "");
+  }
+
+  // Fallback to old method if no saved paths
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders) return null;
 
@@ -710,10 +725,32 @@ async function usePOMFromFactory() {
       return;
     }
 
-    // Create quick pick items with POM options
+    // Check for circular reference - if current file is a POM in the PageFactory
+    const circularGetter = await detectCircularReference(
+      editor.document.uri.fsPath,
+      pageFactoryPath
+    );
+
+    // Filter out the circular reference getter if found - completely silent
+    const availableGetters = circularGetter
+      ? pomGetters.filter((getter) => getter !== circularGetter)
+      : pomGetters;
+
+    // Only show error if no POMs exist in PageFactory at all
+    if (pomGetters.length === 0) {
+      vscode.window.showErrorMessage("No POM getters found in PageFactory.ts");
+      return;
+    }
+
+    // If no getters available after filtering, just return silently
+    if (availableGetters.length === 0) {
+      return; // Silent return - no POMs to suggest
+    }
+
+    // Create quick pick items with available POMs
     const quickPickItems: vscode.QuickPickItem[] = [];
 
-    for (const getter of pomGetters) {
+    for (const getter of availableGetters) {
       const pomName = getter.replace("get", ""); // Keep original case
       const camelCaseName = pomName.charAt(0).toLowerCase() + pomName.slice(1); // Convert to camelCase
 
@@ -898,6 +935,58 @@ function findImportInsertionPosition(content: string): number {
   return importInsertLine;
 }
 
+// Helper function to detect circular reference
+async function detectCircularReference(
+  currentFilePath: string,
+  pageFactoryPath: string
+): Promise<string | null> {
+  try {
+    // Read PageFactory content
+    const pageFactoryContent = fs.readFileSync(pageFactoryPath, "utf8");
+
+    // Get the current file's class name
+    const currentFileContent = fs.readFileSync(currentFilePath, "utf8");
+    const currentClassMatch = currentFileContent.match(
+      /export\s+class\s+(\w+)/
+    );
+
+    if (!currentClassMatch) {
+      return null; // Not a class file
+    }
+
+    const currentClassName = currentClassMatch[1];
+
+    // Check if this class is imported in PageFactory
+    const importPattern = new RegExp(
+      `import\\s+\\{[^}]*\\b${currentClassName}\\b[^}]*\\}\\s+from\\s+['"][^'"]*`,
+      "g"
+    );
+    const hasImport = importPattern.test(pageFactoryContent);
+
+    if (!hasImport) {
+      return null; // Not imported in PageFactory
+    }
+
+    // Check if there's a getter method that returns this class
+    const getterPattern = new RegExp(
+      `(get\\w+)\\s*\\([^)]*\\)\\s*:\\s*${currentClassName}`,
+      "g"
+    );
+    const getterMatch = pageFactoryContent.match(getterPattern);
+
+    if (getterMatch && getterMatch.length > 0) {
+      // Extract the getter method name
+      const fullGetterMatch = getterMatch[0];
+      const getterNameMatch = fullGetterMatch.match(/(get\w+)/);
+      return getterNameMatch ? getterNameMatch[1] : null;
+    }
+
+    return null;
+  } catch (error) {
+    return null; // Error reading files, assume no circular reference
+  }
+}
+
 // Extract POM getter methods from PageFactory
 async function extractPOMGetters(pageFactoryPath: string): Promise<string[]> {
   try {
@@ -920,3 +1009,314 @@ async function extractPOMGetters(pageFactoryPath: string): Promise<string[]> {
 }
 
 export function deactivate() {}
+
+// ==================== PageFactory Path Management ====================
+
+interface SavedPageFactoryPath {
+  path: string;
+  label: string;
+  lastUsed: number;
+}
+
+// Get saved PageFactory paths from global state
+function getSavedPageFactoryPaths(): SavedPageFactoryPath[] {
+  const saved = extensionContext.globalState.get<SavedPageFactoryPath[]>(
+    "snapwright.pageFactoryPaths",
+    []
+  );
+  return saved.sort((a, b) => b.lastUsed - a.lastUsed); // Sort by most recently used
+}
+
+// Save PageFactory paths to global state
+async function savePageFactoryPaths(
+  paths: SavedPageFactoryPath[]
+): Promise<void> {
+  await extensionContext.globalState.update(
+    "snapwright.pageFactoryPaths",
+    paths
+  );
+}
+
+// Add or update a PageFactory path
+async function addPageFactoryPath(
+  filePath: string,
+  label?: string
+): Promise<void> {
+  const paths = getSavedPageFactoryPaths();
+  const existingIndex = paths.findIndex((p) => p.path === filePath);
+
+  const pathEntry: SavedPageFactoryPath = {
+    path: filePath,
+    label: label || path.basename(path.dirname(filePath)),
+    lastUsed: Date.now(),
+  };
+
+  if (existingIndex >= 0) {
+    // Update existing entry
+    paths[existingIndex] = pathEntry;
+  } else {
+    // Add new entry
+    paths.push(pathEntry);
+  }
+
+  await savePageFactoryPaths(paths);
+}
+
+// Remove a PageFactory path
+async function removePageFactoryPath(filePath: string): Promise<void> {
+  const paths = getSavedPageFactoryPaths();
+  const filteredPaths = paths.filter((p) => p.path !== filePath);
+  await savePageFactoryPaths(filteredPaths);
+}
+
+// Show PageFactory path management UI
+async function selectPageFactoryPath(): Promise<string | null> {
+  const savedPaths = getSavedPageFactoryPaths();
+
+  // Create quick pick items
+  const quickPickItems: vscode.QuickPickItem[] = [];
+
+  // Add saved paths
+  if (savedPaths.length > 0) {
+    quickPickItems.push({
+      label: "📁 Recently Used PageFactory Files",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+
+    savedPaths.forEach((savedPath, index) => {
+      quickPickItems.push({
+        label: `$(file) ${savedPath.label}`,
+        description: savedPath.path,
+        detail: `Last used: ${new Date(savedPath.lastUsed).toLocaleString()}`,
+        alwaysShow: true,
+      });
+    });
+
+    quickPickItems.push({
+      label: "⚙️ Management Options",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+  }
+
+  // Add management options
+  quickPickItems.push(
+    {
+      label: "$(add) Browse for new PageFactory file",
+      description: "Select a new PageFactory.ts file",
+      alwaysShow: true,
+    },
+    {
+      label: "$(edit) Edit saved paths",
+      description: "Modify labels or remove saved paths",
+      alwaysShow: true,
+    }
+  );
+
+  const selection = await vscode.window.showQuickPick(quickPickItems, {
+    placeHolder: "Select PageFactory file or manage saved paths",
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+
+  if (!selection) {
+    return null; // User cancelled
+  }
+
+  // Handle different selections
+  if (selection.label === "$(add) Browse for new PageFactory file") {
+    return await browseForPageFactory();
+  } else if (selection.label === "$(edit) Edit saved paths") {
+    return await editSavedPaths();
+  } else {
+    // User selected a saved path
+    const selectedPath = selection.description!;
+
+    // Verify the file still exists
+    if (!fs.existsSync(selectedPath)) {
+      const choice = await vscode.window.showWarningMessage(
+        `PageFactory file not found: ${selectedPath}`,
+        "Remove from list",
+        "Browse for new location",
+        "Cancel"
+      );
+
+      if (choice === "Remove from list") {
+        await removePageFactoryPath(selectedPath);
+        return await selectPageFactoryPath(); // Show the menu again
+      } else if (choice === "Browse for new location") {
+        return await browseForPageFactory();
+      } else {
+        return null;
+      }
+    }
+
+    // Update last used time
+    await addPageFactoryPath(selectedPath);
+    return selectedPath;
+  }
+}
+
+// Browse for PageFactory file
+async function browseForPageFactory(): Promise<string | null> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders) {
+    vscode.window.showErrorMessage("No workspace folder found");
+    return null;
+  }
+
+  const fileUri = await vscode.window.showOpenDialog({
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    defaultUri: workspaceFolders[0].uri,
+    filters: {
+      "TypeScript Files": ["ts"],
+    },
+    title: "Select PageFactory.ts file",
+  });
+
+  if (!fileUri || fileUri.length === 0) {
+    return null;
+  }
+
+  const selectedPath = fileUri[0].fsPath;
+
+  // Verify it's a valid PageFactory file
+  try {
+    const content = fs.readFileSync(selectedPath, "utf8");
+    if (
+      !content.includes("class PageFactory") &&
+      !content.includes("PageFactory")
+    ) {
+      const proceed = await vscode.window.showWarningMessage(
+        "The selected file doesn't appear to be a PageFactory. Continue anyway?",
+        "Yes",
+        "No"
+      );
+      if (proceed !== "Yes") {
+        return null;
+      }
+    }
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error reading file: ${error}`);
+    return null;
+  }
+
+  // Ask for a label
+  const label = await vscode.window.showInputBox({
+    prompt: "Enter a label for this PageFactory (optional)",
+    value: path.basename(path.dirname(selectedPath)),
+    validateInput: (value) => {
+      if (value && value.trim().length === 0) {
+        return "Label cannot be empty if provided";
+      }
+      return null;
+    },
+  });
+
+  // Save the path
+  await addPageFactoryPath(selectedPath, label || undefined);
+
+  return selectedPath;
+}
+
+// Edit saved paths
+async function editSavedPaths(): Promise<string | null> {
+  const savedPaths = getSavedPageFactoryPaths();
+
+  if (savedPaths.length === 0) {
+    vscode.window.showInformationMessage("No saved paths to edit");
+    return await browseForPageFactory();
+  }
+
+  const quickPickItems: vscode.QuickPickItem[] = savedPaths.map(
+    (savedPath) => ({
+      label: `$(file) ${savedPath.label}`,
+      description: savedPath.path,
+      detail: "Click to edit or use, right-click for more options",
+    })
+  );
+
+  quickPickItems.push({
+    label: "$(trash) Clear all saved paths",
+    description: "Remove all saved PageFactory paths",
+    detail: "This action cannot be undone",
+  });
+
+  const selection = await vscode.window.showQuickPick(quickPickItems, {
+    placeHolder: "Select path to edit or manage",
+  });
+
+  if (!selection) {
+    return null;
+  }
+
+  if (selection.label === "$(trash) Clear all saved paths") {
+    const confirm = await vscode.window.showWarningMessage(
+      "Are you sure you want to clear all saved PageFactory paths?",
+      "Yes",
+      "No"
+    );
+    if (confirm === "Yes") {
+      await savePageFactoryPaths([]);
+      vscode.window.showInformationMessage("All saved paths cleared");
+    }
+    return await selectPageFactoryPath();
+  }
+
+  const selectedPath = selection.description!;
+
+  // Show edit options
+  const action = await vscode.window.showQuickPick(
+    [
+      {
+        label: "$(edit) Edit label",
+        description: "Change the display label for this path",
+      },
+      {
+        label: "$(file) Use this path",
+        description: "Select this PageFactory for current operation",
+      },
+      {
+        label: "$(trash) Remove from list",
+        description: "Delete this saved path",
+      },
+    ],
+    {
+      placeHolder: `Manage: ${selection.label}`,
+    }
+  );
+
+  if (!action) {
+    return await editSavedPaths(); // Go back to edit menu
+  }
+
+  if (action.label === "$(edit) Edit label") {
+    const currentPath = savedPaths.find((p) => p.path === selectedPath);
+    const newLabel = await vscode.window.showInputBox({
+      prompt: "Enter new label",
+      value: currentPath?.label,
+      validateInput: (value) => {
+        if (!value || value.trim().length === 0) {
+          return "Label cannot be empty";
+        }
+        return null;
+      },
+    });
+
+    if (newLabel) {
+      await addPageFactoryPath(selectedPath, newLabel);
+      vscode.window.showInformationMessage("Label updated successfully");
+    }
+    return await editSavedPaths();
+  } else if (action.label === "$(file) Use this path") {
+    await addPageFactoryPath(selectedPath); // Update last used time
+    return selectedPath;
+  } else if (action.label === "$(trash) Remove from list") {
+    await removePageFactoryPath(selectedPath);
+    vscode.window.showInformationMessage("Path removed from list");
+    return await editSavedPaths();
+  }
+
+  return null;
+}
