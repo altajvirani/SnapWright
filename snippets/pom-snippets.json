@@ -20,11 +20,11 @@
     ],
     "description": "Import PageFactory exports directly"
   },
-  "Page Object Model Class": {
-    "prefix": "pomclass",
+  "Page Object Class": {
+    "prefix": "pageobjectclass",
     "body": [
       "/**",
-      " * ${1:PageName} - Page Object Model class",
+      " * ${1:PageName} - Page Object class",
       " */",
       "export class ${1:PageName} {",
       "    constructor() {",
@@ -34,7 +34,7 @@
       "    // Add page elements and methods here",
       "}"
     ],
-    "description": "Create a basic Page Object Model class template"
+    "description": "Create a basic Page Object class template"
   },
   "Smart PageFactory Setup": {
     "prefix": "pfsetup",
@@ -44,8 +44,8 @@
       "// Setup page in test",
       "setPage(${2:yourPageInstance});",
       "",
-      "// Access POM instances using Command Palette:",
-      "// Ctrl+Shift+P -> 'SnapWright: Use POM from PageFactory'"
+      "// Access Page Object instances using Command Palette:",
+      "// Ctrl+Shift+P -> 'SnapWright: Use Page Object from PageFactory'"
     ],
     "description": "Complete PageFactory setup pattern with Command Palette guidance"
   },

@@ -53,7 +53,7 @@
       },
       {
         "command": "snapwright.usePOMFromFactory",
-        "title": "Use POM from PageFactory",
+        "title": "Use Page Object from PageFactory",
         "category": "SnapWright"
       }
     ],

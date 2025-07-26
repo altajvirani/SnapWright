@@ -19,34 +19,34 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  // Register command to add POM classes to PageFactory
-  let addPOMToFactoryCommand = vscode.commands.registerCommand(
+  // Register command to add Page Object classes to PageFactory
+  let addPageObjectToFactoryCommand = vscode.commands.registerCommand(
     "snapwright.addPOMToFactory",
     async () => {
-      await addPOMToFactory();
+      await addPageObjectToFactory();
     }
   );
 
-  // Register command to create POM class
-  let createPOMClassCommand = vscode.commands.registerCommand(
+  // Register command to create Page Object class
+  let createPageObjectClassCommand = vscode.commands.registerCommand(
     "snapwright.createPOMClass",
     async () => {
-      await createPOMClass();
+      await createPageObjectClass();
     }
   );
 
-  // Register command to use POM from PageFactory
-  let usePOMFromFactoryCommand = vscode.commands.registerCommand(
-    "snapwright.usePOMFromFactory",
+  // Register command to use Page Object from PageFactory
+  let usePageObjectFromFactoryCommand = vscode.commands.registerCommand(
+    "snapwright.usePageObjectFromFactory",
     async () => {
-      await usePOMFromFactory();
+      await usePageObjectFromFactory();
     }
   );
 
   context.subscriptions.push(createPageFactoryCommand);
-  context.subscriptions.push(addPOMToFactoryCommand);
-  context.subscriptions.push(createPOMClassCommand);
-  context.subscriptions.push(usePOMFromFactoryCommand);
+  context.subscriptions.push(addPageObjectToFactoryCommand);
+  context.subscriptions.push(createPageObjectClassCommand);
+  context.subscriptions.push(usePageObjectFromFactoryCommand);
 }
 
 async function createPageFactory() {
@@ -58,45 +58,103 @@ async function createPageFactory() {
       return;
     }
 
-    // Show directory picker
+    // Step 1: Show directory picker for PageFactory location
     const selectedFolder = await selectDirectory(workspaceFolders[0].uri);
     if (!selectedFolder) {
       return;
     }
 
-    const pageFactoryPath = path.join(selectedFolder.fsPath, "PageFactory.ts");
+    // Step 2: Get user-defined name for the PageFactory
+    let pageFactoryName: string | undefined;
+    let isValidName = false;
 
-    // Check if file already exists
-    if (fs.existsSync(pageFactoryPath)) {
-      const overwrite = await vscode.window.showWarningMessage(
-        "PageFactory.ts already exists. Do you want to overwrite it?",
-        "Yes",
-        "No"
+    while (!isValidName) {
+      pageFactoryName = await vscode.window.showInputBox({
+        prompt: "Enter a unique name for your PageFactory",
+        placeHolder: "e.g., MainPageFactory, TestPageFactory",
+        validateInput: (value: string) => {
+          if (!value || value.trim().length === 0) {
+            return "PageFactory name cannot be empty";
+          }
+          if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(value.trim())) {
+            return "PageFactory name must start with a letter and contain only letters and numbers";
+          }
+          return null;
+        },
+      });
+
+      if (!pageFactoryName) {
+        return; // User cancelled
+      }
+
+      pageFactoryName = pageFactoryName.trim();
+
+      // Step 3: Validate uniqueness in directory
+      const pageFactoryPath = path.join(
+        selectedFolder.fsPath,
+        `${pageFactoryName}.ts`
       );
-      if (overwrite !== "Yes") {
-        return;
+
+      if (fs.existsSync(pageFactoryPath)) {
+        const action = await vscode.window.showWarningMessage(
+          `A PageFactory named "${pageFactoryName}.ts" already exists in this directory. Please choose a different name or overwrite the existing file.`,
+          "Choose Different Name",
+          "Overwrite Existing",
+          "Cancel"
+        );
+
+        if (action === "Cancel") {
+          return;
+        } else if (action === "Overwrite Existing") {
+          isValidName = true;
+        }
+        // If "Choose Different Name", continue the loop
+      } else {
+        // Step 4: Check uniqueness in saved PageFactory list
+        const savedFactories = getSavedPageFactoryPaths();
+        const nameExists = savedFactories.some(
+          (factory: any) =>
+            factory.label.toLowerCase() === pageFactoryName!.toLowerCase()
+        );
+
+        if (nameExists) {
+          vscode.window.showErrorMessage(
+            `A PageFactory with the name "${pageFactoryName}" already exists in your saved list. Please choose a different name.`
+          );
+          // Continue the loop to get a new name
+        } else {
+          isValidName = true;
+        }
       }
     }
 
-    // Create PageFactory template
+    const pageFactoryPath = path.join(
+      selectedFolder.fsPath,
+      `${pageFactoryName}.ts`
+    );
+
+    // Step 5: Create PageFactory template
     const pageFactoryTemplate = generatePageFactoryTemplate();
 
     // Write file
     fs.writeFileSync(pageFactoryPath, pageFactoryTemplate);
+
+    // Step 6: Save to persistent storage
+    await addPageFactoryPath(pageFactoryPath, pageFactoryName);
 
     // Open the created file
     const document = await vscode.workspace.openTextDocument(pageFactoryPath);
     await vscode.window.showTextDocument(document);
 
     vscode.window.showInformationMessage(
-      "PageFactory.ts created successfully!"
+      `PageFactory "${pageFactoryName}.ts" created successfully and saved to your PageFactory list!`
     );
   } catch (error) {
     vscode.window.showErrorMessage(`Error creating PageFactory: ${error}`);
   }
 }
 
-async function addPOMToFactory() {
+async function addPageObjectToFactory() {
   try {
     // Get workspace folders
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -111,7 +169,7 @@ async function addPOMToFactory() {
       return; // User cancelled selection
     }
 
-    // Show directory picker for POM classes
+    // Show directory picker for Page Object classes
     const selectedFolder = await selectDirectory(workspaceFolders[0].uri);
     if (!selectedFolder) {
       return;
@@ -127,7 +185,7 @@ async function addPOMToFactory() {
       return;
     }
 
-    // Let user select which POM classes to add
+    // Let user select which Page Object classes to add
     const selectedFiles = await vscode.window.showQuickPick(
       tsFiles.map((file) => {
         // Extract class name from file content for better display
@@ -155,7 +213,7 @@ async function addPOMToFactory() {
       }),
       {
         canPickMany: true,
-        placeHolder: "Select POM classes to add to PageFactory",
+        placeHolder: "Select Page Object classes to add to PageFactory",
       }
     );
 
@@ -163,14 +221,16 @@ async function addPOMToFactory() {
       return;
     }
 
-    // Update PageFactory with selected POM classes
+    // Update PageFactory with selected Page Object classes
     await updatePageFactory(pageFactoryPath, selectedFiles);
 
     vscode.window.showInformationMessage(
-      `Added ${selectedFiles.length} POM class(es) to PageFactory!`
+      `Added ${selectedFiles.length} Page Object class(es) to PageFactory!`
     );
   } catch (error) {
-    vscode.window.showErrorMessage(`Error adding POM classes: ${error}`);
+    vscode.window.showErrorMessage(
+      `Error adding Page Object classes: ${error}`
+    );
   }
 }
 
@@ -251,7 +311,7 @@ function generatePageFactoryTemplate(): string {
   return `import { type Page } from "@playwright/test";
 
 /**
- * PageFactory - Singleton class for managing Page Object Model instances
+ * PageFactory - Singleton class for managing Page Object instances
  * Generated by SnapWright
  */
 class PageFactory {
@@ -289,7 +349,7 @@ class PageFactory {
     }
   }
 
-  // POM class properties will be added here
+  // Page Object class properties will be added here
 }
 
 export const pageFactory = PageFactory.instance;
@@ -392,9 +452,9 @@ async function updatePageFactory(
     // Simple approach: find _globalPage and insert after it
     const lines = content.split("\n");
     let globalPageIndex = -1;
-    let lastPOMIndex = -1;
+    let lastPageObjectIndex = -1;
 
-    // Find _globalPage and any existing POM properties
+    // Find _globalPage and any existing Page Object properties
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (line.includes("private _globalPage: Page;")) {
@@ -405,13 +465,13 @@ async function updatePageFactory(
         !line.includes("_globalPage") &&
         !line.includes("_instance")
       ) {
-        lastPOMIndex = i;
+        lastPageObjectIndex = i;
       }
     }
 
-    if (lastPOMIndex !== -1) {
-      // Insert after last existing POM property
-      lines.splice(lastPOMIndex + 1, 0, ...properties);
+    if (lastPageObjectIndex !== -1) {
+      // Insert after last existing Page Object property
+      lines.splice(lastPageObjectIndex + 1, 0, ...properties);
     } else if (globalPageIndex !== -1) {
       // Insert after _globalPage - add blank line first, then properties
       lines.splice(globalPageIndex + 1, 0, "", ...properties);
@@ -423,7 +483,7 @@ async function updatePageFactory(
   // Add getters before the comment line
   if (getters.length > 0) {
     const commentIndex = content.indexOf(
-      "// POM class properties will be added here"
+      "// Page Object class properties will be added here"
     );
     if (commentIndex !== -1) {
       const beforeComment = content.substring(0, commentIndex);
@@ -453,7 +513,7 @@ async function updatePageFactory(
   await vscode.window.showTextDocument(document);
 
   vscode.window.showInformationMessage(
-    `Successfully added ${imports.length} new POM class(es) to PageFactory!`
+    `Successfully added ${imports.length} new Page Object class(es) to PageFactory!`
   );
 }
 
@@ -600,8 +660,8 @@ function processClassAndFileName(userInput: string): {
   return { className, fileName };
 }
 
-// Function to create a new POM class
-async function createPOMClass() {
+// Function to create a new Page Object class
+async function createPageObjectClass() {
   try {
     // Get workspace folders
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -619,7 +679,7 @@ async function createPOMClass() {
     // Get class name from user
     const userInput = await vscode.window.showInputBox({
       prompt:
-        "Enter the POM class name (e.g., Home, Login, HomePage, LoginPage)",
+        "Enter the Page Object class name (e.g., Home, Login, HomePage, LoginPage)",
       placeHolder: "Home",
       validateInput: (value: string) => {
         if (!value || value.trim() === "") {
@@ -646,27 +706,27 @@ async function createPOMClass() {
       return;
     }
 
-    // Generate POM class content
-    const pomContent = generatePOMClassTemplate(className);
+    // Generate Page Object class content
+    const pageObjectContent = generatePageObjectClassTemplate(className);
 
     // Write the file
-    fs.writeFileSync(filePath, pomContent);
+    fs.writeFileSync(filePath, pageObjectContent);
 
     // Open the new file
     const document = await vscode.workspace.openTextDocument(filePath);
     await vscode.window.showTextDocument(document);
 
     vscode.window.showInformationMessage(
-      `Successfully created ${className}.ts POM class!`
+      `Successfully created ${className}.ts Page Object class!`
     );
   } catch (error) {
-    console.error("Error creating POM class:", error);
-    vscode.window.showErrorMessage("Failed to create POM class");
+    console.error("Error creating Page Object class:", error);
+    vscode.window.showErrorMessage("Failed to create Page Object class");
   }
 }
 
-// Function to generate POM class template
-function generatePOMClassTemplate(className: string): string {
+// Function to generate Page Object class template
+function generatePageObjectClassTemplate(className: string): string {
   return `// import page from pagefactory here by default so as to allow the commands to execute upon it
 import { page } from '../PageFactory';
 
@@ -680,8 +740,8 @@ export class ${className} {
 `;
 }
 
-// New command to use POM from PageFactory with interactive selection
-async function usePOMFromFactory() {
+// New command to use Page Object from PageFactory with interactive selection
+async function usePageObjectFromFactory() {
   try {
     // Get active editor
     const editor = vscode.window.activeTextEditor;
@@ -718,14 +778,16 @@ async function usePOMFromFactory() {
       return;
     }
 
-    // Extract POM getters from PageFactory
-    const pomGetters = await extractPOMGetters(pageFactoryPath);
-    if (pomGetters.length === 0) {
-      vscode.window.showErrorMessage("No POM getters found in PageFactory.ts");
+    // Extract Page Object getters from PageFactory
+    const pageObjectGetters = await extractPageObjectGetters(pageFactoryPath);
+    if (pageObjectGetters.length === 0) {
+      vscode.window.showErrorMessage(
+        "No Page Object getters found in PageFactory.ts"
+      );
       return;
     }
 
-    // Check for circular reference - if current file is a POM in the PageFactory
+    // Check for circular reference - if current file is a Page Object in the PageFactory
     const circularGetter = await detectCircularReference(
       editor.document.uri.fsPath,
       pageFactoryPath
@@ -733,26 +795,16 @@ async function usePOMFromFactory() {
 
     // Filter out the circular reference getter if found - completely silent
     const availableGetters = circularGetter
-      ? pomGetters.filter((getter) => getter !== circularGetter)
-      : pomGetters;
+      ? pageObjectGetters.filter((getter) => getter !== circularGetter)
+      : pageObjectGetters;
 
-    // Only show error if no POMs exist in PageFactory at all
-    if (pomGetters.length === 0) {
-      vscode.window.showErrorMessage("No POM getters found in PageFactory.ts");
-      return;
-    }
-
-    // If no getters available after filtering, just return silently
-    if (availableGetters.length === 0) {
-      return; // Silent return - no POMs to suggest
-    }
-
-    // Create quick pick items with available POMs
+    // Create quick pick items with available Page Objects
     const quickPickItems: vscode.QuickPickItem[] = [];
 
     for (const getter of availableGetters) {
-      const pomName = getter.replace("get", ""); // Keep original case
-      const camelCaseName = pomName.charAt(0).toLowerCase() + pomName.slice(1); // Convert to camelCase
+      const pageObjectName = getter.replace("get", ""); // Keep original case
+      const camelCaseName =
+        pageObjectName.charAt(0).toLowerCase() + pageObjectName.slice(1); // Convert to camelCase
 
       // Option without page parameter
       quickPickItems.push({
@@ -772,7 +824,7 @@ async function usePOMFromFactory() {
     // Show quick pick
     const selectedOption = await vscode.window.showQuickPick(quickPickItems, {
       placeHolder: "Select POM initialization pattern",
-      title: "Use POM from PageFactory",
+      title: "Use Page Object from PageFactory",
     });
 
     if (!selectedOption) {
@@ -988,7 +1040,9 @@ async function detectCircularReference(
 }
 
 // Extract POM getter methods from PageFactory
-async function extractPOMGetters(pageFactoryPath: string): Promise<string[]> {
+async function extractPageObjectGetters(
+  pageFactoryPath: string
+): Promise<string[]> {
   try {
     const content = fs.readFileSync(pageFactoryPath, "utf8");
     const getterMatches = content.match(
