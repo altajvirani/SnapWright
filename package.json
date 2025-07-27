@@ -55,6 +55,21 @@
         "command": "snapwright.usePOMFromFactory",
         "title": "Use Page Object from PageFactory",
         "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.removePOMFromFactory",
+        "title": "Remove Page Object from PageFactory",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.deletePageFactory",
+        "title": "Delete PageFactory",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.cleanupOrphanedPageObjects",
+        "title": "Cleanup Orphaned Page Objects",
+        "category": "SnapWright"
       }
     ],
     "snippets": [

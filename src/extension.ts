@@ -37,9 +37,33 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to use Page Object from PageFactory
   let usePageObjectFromFactoryCommand = vscode.commands.registerCommand(
-    "snapwright.usePageObjectFromFactory",
+    "snapwright.usePOMFromFactory",
     async () => {
       await usePageObjectFromFactory();
+    }
+  );
+
+  // Register command to remove Page Object from PageFactory
+  let removePageObjectFromFactoryCommand = vscode.commands.registerCommand(
+    "snapwright.removePOMFromFactory",
+    async () => {
+      await removePageObjectFromFactory();
+    }
+  );
+
+  // Register command to delete PageFactory
+  let deletePageFactoryCommand = vscode.commands.registerCommand(
+    "snapwright.deletePageFactory",
+    async () => {
+      await deletePageFactory();
+    }
+  );
+
+  // Register command to cleanup orphaned Page Objects
+  let cleanupOrphanedPageObjectsCommand = vscode.commands.registerCommand(
+    "snapwright.cleanupOrphanedPageObjects",
+    async () => {
+      await cleanupOrphanedPageObjects();
     }
   );
 
@@ -47,6 +71,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(addPageObjectToFactoryCommand);
   context.subscriptions.push(createPageObjectClassCommand);
   context.subscriptions.push(usePageObjectFromFactoryCommand);
+  context.subscriptions.push(removePageObjectFromFactoryCommand);
+  context.subscriptions.push(deletePageFactoryCommand);
+  context.subscriptions.push(cleanupOrphanedPageObjectsCommand);
 }
 
 async function createPageFactory() {
@@ -89,7 +116,7 @@ async function createPageFactory() {
 
       pageFactoryName = pageFactoryName.trim();
 
-      // Step 3: Validate uniqueness in directory
+      // Step 3: Validate uniqueness in directory only
       const pageFactoryPath = path.join(
         selectedFolder.fsPath,
         `${pageFactoryName}.ts`
@@ -110,21 +137,8 @@ async function createPageFactory() {
         }
         // If "Choose Different Name", continue the loop
       } else {
-        // Step 4: Check uniqueness in saved PageFactory list
-        const savedFactories = getSavedPageFactoryPaths();
-        const nameExists = savedFactories.some(
-          (factory: any) =>
-            factory.label.toLowerCase() === pageFactoryName!.toLowerCase()
-        );
-
-        if (nameExists) {
-          vscode.window.showErrorMessage(
-            `A PageFactory with the name "${pageFactoryName}" already exists in your saved list. Please choose a different name.`
-          );
-          // Continue the loop to get a new name
-        } else {
-          isValidName = true;
-        }
+        // No file conflict, name is valid
+        isValidName = true;
       }
     }
 
@@ -185,35 +199,178 @@ async function addPageObjectToFactory() {
       return;
     }
 
+    // Get file information with stats for sorting
+    const fileInfos = tsFiles.map((file) => {
+      try {
+        const stats = fs.statSync(file);
+        const fileContent = fs.readFileSync(file, "utf8");
+        const classMatch = fileContent.match(/export\s+class\s+(\w+)/);
+        const className = classMatch
+          ? classMatch[1]
+          : path.basename(file, ".ts");
+
+        return {
+          filePath: file,
+          className: className,
+          modifiedTime: stats.mtime,
+          createdTime: stats.birthtime,
+          stats: stats,
+        };
+      } catch (error) {
+        // Fallback for files that can't be read
+        const stats = fs.statSync(file);
+        return {
+          filePath: file,
+          className: path.basename(file, ".ts"),
+          modifiedTime: stats.mtime,
+          createdTime: stats.birthtime,
+          stats: stats,
+        };
+      }
+    });
+
+    // Show sorting options first (with remembered preference)
+    const lastSortOption = extensionContext.globalState.get<string>(
+      "snapwright.lastSortOption",
+      "modified-desc"
+    );
+
+    const sortOptions = [
+      {
+        label: "$(clock) Modified Time (Latest First)",
+        description: "Sort by modification time, newest first",
+        value: "modified-desc",
+      },
+      {
+        label: "$(clock) Modified Time (Oldest First)",
+        description: "Sort by modification time, oldest first",
+        value: "modified-asc",
+      },
+      {
+        label: "$(calendar) Created Time (Latest First)",
+        description: "Sort by creation time, newest first",
+        value: "created-desc",
+      },
+      {
+        label: "$(calendar) Created Time (Oldest First)",
+        description: "Sort by creation time, oldest first",
+        value: "created-asc",
+      },
+      {
+        label: "$(symbol-string) Alphabetical (A-Z)",
+        description: "Sort by class name alphabetically",
+        value: "name-asc",
+      },
+      {
+        label: "$(symbol-string) Alphabetical (Z-A)",
+        description: "Sort by class name reverse alphabetically",
+        value: "name-desc",
+      },
+    ];
+
+    // Mark the last used option
+    const defaultOption = sortOptions.find(
+      (opt) => opt.value === lastSortOption
+    );
+    if (defaultOption) {
+      defaultOption.description += " (Last used)";
+    }
+
+    const sortOption = await vscode.window.showQuickPick(sortOptions, {
+      placeHolder: "Choose how to sort the Page Object classes",
+      title: "Sort Options",
+    });
+
+    if (!sortOption) {
+      return; // User cancelled
+    }
+
+    // Remember the user's choice
+    await extensionContext.globalState.update(
+      "snapwright.lastSortOption",
+      sortOption.value
+    );
+
+    // Sort the files based on selected option
+    switch (sortOption.value) {
+      case "modified-desc":
+        fileInfos.sort(
+          (a, b) => b.modifiedTime.getTime() - a.modifiedTime.getTime()
+        );
+        break;
+      case "modified-asc":
+        fileInfos.sort(
+          (a, b) => a.modifiedTime.getTime() - b.modifiedTime.getTime()
+        );
+        break;
+      case "created-desc":
+        fileInfos.sort(
+          (a, b) => b.createdTime.getTime() - a.createdTime.getTime()
+        );
+        break;
+      case "created-asc":
+        fileInfos.sort(
+          (a, b) => a.createdTime.getTime() - b.createdTime.getTime()
+        );
+        break;
+      case "name-asc":
+        fileInfos.sort((a, b) => a.className.localeCompare(b.className));
+        break;
+      case "name-desc":
+        fileInfos.sort((a, b) => b.className.localeCompare(a.className));
+        break;
+    }
+
+    // Create formatted display with time information
+    const formatTime = (date: Date) => {
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffMins < 60) {
+        return diffMins <= 1 ? "Just now" : `${diffMins} minutes ago`;
+      } else if (diffHours < 24) {
+        return diffHours === 1 ? "1 hour ago" : `${diffHours} hours ago`;
+      } else if (diffDays < 7) {
+        return diffDays === 1 ? "1 day ago" : `${diffDays} days ago`;
+      } else {
+        return date.toLocaleDateString();
+      }
+    };
+
     // Let user select which Page Object classes to add
     const selectedFiles = await vscode.window.showQuickPick(
-      tsFiles.map((file) => {
-        // Extract class name from file content for better display
-        try {
-          const fileContent = fs.readFileSync(file, "utf8");
-          const classMatch = fileContent.match(/export\s+class\s+(\w+)/);
-          const className = classMatch
-            ? classMatch[1]
-            : path.basename(file, ".ts");
+      fileInfos.map((fileInfo) => {
+        const modifiedTimeStr = formatTime(fileInfo.modifiedTime);
+        const createdTimeStr = formatTime(fileInfo.createdTime);
 
-          return {
-            label: className,
-            description: file,
-            detail: `File: ${path.basename(file)}`,
-            picked: true,
-          };
-        } catch (error) {
-          return {
-            label: path.basename(file, ".ts"),
-            description: file,
-            detail: `File: ${path.basename(file)}`,
-            picked: true,
-          };
+        let detail = `File: ${path.basename(fileInfo.filePath)}`;
+        if (sortOption.value.startsWith("modified")) {
+          detail += ` • Modified: ${modifiedTimeStr}`;
+        } else if (sortOption.value.startsWith("created")) {
+          detail += ` • Created: ${createdTimeStr}`;
+        } else {
+          detail += ` • Modified: ${modifiedTimeStr}`;
         }
+
+        return {
+          label: fileInfo.className,
+          description: fileInfo.filePath,
+          detail: detail,
+          picked: true,
+        };
       }),
       {
         canPickMany: true,
-        placeHolder: "Select Page Object classes to add to PageFactory",
+        placeHolder: `Select Page Object classes to add to PageFactory (${
+          fileInfos.length
+        } files found, sorted by ${sortOption.label.replace(
+          /\$\([^)]+\)\s*/,
+          ""
+        )})`,
+        title: "Select Page Objects",
       }
     );
 
@@ -892,6 +1049,299 @@ async function usePageObjectFromFactory() {
   }
 }
 
+// Command to remove a Page Object from PageFactory
+async function removePageObjectFromFactory() {
+  try {
+    // Get workspace folders
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Select PageFactory using the path management system
+    const pageFactoryPath = await selectPageFactoryPath();
+    if (!pageFactoryPath) {
+      return; // User cancelled selection
+    }
+
+    // Extract existing POMs from PageFactory
+    const existingPOMs = await extractPageObjectsFromPageFactory(
+      pageFactoryPath
+    );
+
+    if (existingPOMs.length === 0) {
+      vscode.window.showInformationMessage(
+        "No Page Objects found in this PageFactory"
+      );
+      return;
+    }
+
+    // Let user select which POMs to remove
+    const selectedPOMs = await vscode.window.showQuickPick(
+      existingPOMs.map((pom: PageObjectInfo) => ({
+        label: pom.className,
+        description: pom.getterName,
+        detail: `Import: ${pom.importPath}`,
+        picked: false,
+      })),
+      {
+        canPickMany: true,
+        placeHolder: "Select Page Objects to remove from PageFactory",
+        title: "Remove Page Objects",
+      }
+    );
+
+    if (!selectedPOMs || selectedPOMs.length === 0) {
+      return;
+    }
+
+    // Confirm deletion
+    const pomNames = selectedPOMs.map((pom) => pom.label).join(", ");
+    const confirm = await vscode.window.showWarningMessage(
+      `Are you sure you want to remove these Page Objects from PageFactory?\n\n${pomNames}\n\nThis will remove imports, properties, getters, and exports.`,
+      "Yes, Remove",
+      "Cancel"
+    );
+
+    if (confirm !== "Yes, Remove") {
+      return;
+    }
+
+    // Remove POMs from PageFactory
+    await removePOMsFromPageFactory(
+      pageFactoryPath,
+      selectedPOMs.map((pom) => pom.label)
+    );
+
+    vscode.window.showInformationMessage(
+      `Successfully removed ${selectedPOMs.length} Page Object(s) from PageFactory`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error removing Page Objects: ${error}`);
+  }
+}
+
+// Command to delete an entire PageFactory
+async function deletePageFactory() {
+  try {
+    // Get workspace folders
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Select PageFactory using the path management system
+    const pageFactoryPath = await selectPageFactoryPath();
+    if (!pageFactoryPath) {
+      return; // User cancelled selection
+    }
+
+    // Get PageFactory info for confirmation
+    const pageFactoryName = path.basename(pageFactoryPath, ".ts");
+    const existingPOMs = await extractPageObjectsFromPageFactory(
+      pageFactoryPath
+    );
+
+    // Show detailed confirmation
+    let confirmMessage = `Are you sure you want to delete the PageFactory "${pageFactoryName}"?\n\n`;
+    confirmMessage += `File: ${pageFactoryPath}\n\n`;
+
+    if (existingPOMs.length > 0) {
+      confirmMessage += `This will also remove ${existingPOMs.length} Page Object(s):\n`;
+      confirmMessage += existingPOMs
+        .map((pom: PageObjectInfo) => `• ${pom.className}`)
+        .join("\n");
+      confirmMessage += "\n\n";
+    }
+
+    confirmMessage += "This action cannot be undone.";
+
+    const confirm = await vscode.window.showWarningMessage(
+      confirmMessage,
+      "Yes, Delete",
+      "Cancel"
+    );
+
+    if (confirm !== "Yes, Delete") {
+      return;
+    }
+
+    // Delete the file
+    if (fs.existsSync(pageFactoryPath)) {
+      fs.unlinkSync(pageFactoryPath);
+    }
+
+    // Remove from saved paths
+    await removePageFactoryPath(pageFactoryPath);
+
+    // Close the file if it's open
+    const openEditors = vscode.window.visibleTextEditors;
+    for (const editor of openEditors) {
+      if (editor.document.uri.fsPath === pageFactoryPath) {
+        await vscode.commands.executeCommand(
+          "workbench.action.closeActiveEditor"
+        );
+        break;
+      }
+    }
+
+    vscode.window.showInformationMessage(
+      `Successfully deleted PageFactory "${pageFactoryName}" and removed it from saved paths`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error deleting PageFactory: ${error}`);
+  }
+}
+
+// Helper interface for Page Object information
+interface PageObjectInfo {
+  className: string;
+  getterName: string;
+  importPath: string;
+  propertyName: string;
+  exportName: string;
+}
+
+// Helper function to extract Page Objects from PageFactory
+async function extractPageObjectsFromPageFactory(
+  pageFactoryPath: string
+): Promise<PageObjectInfo[]> {
+  try {
+    const content = fs.readFileSync(pageFactoryPath, "utf8");
+    const pageObjects: PageObjectInfo[] = [];
+
+    // Extract imports to get class names and paths
+    const importMatches = content.match(
+      /import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]([^'"]+)['"]/g
+    );
+    if (!importMatches) return [];
+
+    const importMap = new Map<string, string>();
+    importMatches.forEach((importMatch) => {
+      const match = importMatch.match(
+        /import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]([^'"]+)['"]/
+      );
+      if (match) {
+        const classNames = match[1].split(",").map((name) => name.trim());
+        const importPath = match[2];
+        classNames.forEach((className) => {
+          importMap.set(className, importPath);
+        });
+      }
+    });
+
+    // Extract getter methods and match with imports
+    const getterMatches = content.match(
+      /public\s+(get\w+)\s*\(\s*page\?\s*:\s*Page\s*\)\s*:\s*(\w+)/g
+    );
+    if (!getterMatches) return [];
+
+    getterMatches.forEach((getterMatch) => {
+      const match = getterMatch.match(
+        /public\s+(get\w+)\s*\(\s*page\?\s*:\s*Page\s*\)\s*:\s*(\w+)/
+      );
+      if (match) {
+        const getterName = match[1];
+        const className = match[2];
+        const importPath = importMap.get(className);
+
+        if (importPath && getterName !== "getPage") {
+          const propertyName = `_${classNameToCamelCase(className)}`;
+          const exportName = `get${className}`;
+
+          pageObjects.push({
+            className,
+            getterName,
+            importPath,
+            propertyName,
+            exportName,
+          });
+        }
+      }
+    });
+
+    return pageObjects;
+  } catch (error) {
+    return [];
+  }
+}
+
+// Helper function to remove POMs from PageFactory
+async function removePOMsFromPageFactory(
+  pageFactoryPath: string,
+  classNamesToRemove: string[]
+): Promise<void> {
+  try {
+    let content = fs.readFileSync(pageFactoryPath, "utf8");
+    const lines = content.split("\n");
+
+    // Remove imports
+    const filteredLines = lines.filter((line) => {
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith("import")) {
+        // Check if this import contains any of the classes to remove
+        const hasClassToRemove = classNamesToRemove.some(
+          (className) =>
+            trimmedLine.includes(`{ ${className} }`) ||
+            trimmedLine.includes(`{${className}}`) ||
+            (trimmedLine.includes(`{ `) &&
+              trimmedLine.includes(` ${className} `)) ||
+            (trimmedLine.includes(`{ `) &&
+              trimmedLine.includes(` ${className},`)) ||
+            trimmedLine.includes(`, ${className} `) ||
+            trimmedLine.includes(`,${className}}`)
+        );
+        return !hasClassToRemove;
+      }
+      return true;
+    });
+
+    content = filteredLines.join("\n");
+
+    // Remove properties
+    classNamesToRemove.forEach((className) => {
+      const propertyName = `_${classNameToCamelCase(className)}`;
+      const propertyRegex = new RegExp(
+        `\\s*private\\s+${propertyName}:\\s*${className};?\\s*\\n?`,
+        "g"
+      );
+      content = content.replace(propertyRegex, "");
+    });
+
+    // Remove getter methods
+    classNamesToRemove.forEach((className) => {
+      const getterRegex = new RegExp(
+        `\\s*public\\s+get${className}\\s*\\([^)]*\\)\\s*:\\s*${className}\\s*\\{[^}]*\\}\\s*\\n?`,
+        "gs"
+      );
+      content = content.replace(getterRegex, "");
+    });
+
+    // Remove exports
+    classNamesToRemove.forEach((className) => {
+      const exportRegex = new RegExp(
+        `\\s*export\\s+const\\s+get${className}\\s*=.*?;\\s*\\n?`,
+        "g"
+      );
+      content = content.replace(exportRegex, "");
+    });
+
+    // Clean up extra blank lines
+    content = content.replace(/\n\s*\n\s*\n/g, "\n\n");
+
+    // Write the updated content
+    fs.writeFileSync(pageFactoryPath, content);
+
+    // Open the updated file
+    const document = await vscode.workspace.openTextDocument(pageFactoryPath);
+    await vscode.window.showTextDocument(document);
+  } catch (error) {
+    throw new Error(`Failed to remove POMs from PageFactory: ${error}`);
+  }
+}
+
 // Helper function to extract existing imports from document
 function extractExistingImportsFromDocument(content: string): string[] {
   const importMatches = content.match(
@@ -1063,6 +1513,87 @@ async function extractPageObjectGetters(
 }
 
 export function deactivate() {}
+
+// Command to clean up orphaned Page Objects from PageFactory
+async function cleanupOrphanedPageObjects() {
+  try {
+    // Get workspace folders
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Select PageFactory using the path management system
+    const pageFactoryPath = await selectPageFactoryPath();
+    if (!pageFactoryPath) {
+      return; // User cancelled selection
+    }
+
+    // Extract existing POMs from PageFactory
+    const existingPOMs = await extractPageObjectsFromPageFactory(
+      pageFactoryPath
+    );
+
+    if (existingPOMs.length === 0) {
+      vscode.window.showInformationMessage(
+        "No Page Objects found in this PageFactory"
+      );
+      return;
+    }
+
+    // Check which POM files still exist
+    const orphanedPOMs: PageObjectInfo[] = [];
+    const workspacePath = path.dirname(pageFactoryPath);
+
+    for (const pom of existingPOMs) {
+      // Construct the full path to the POM file
+      const pomFilePath = path.resolve(workspacePath, pom.importPath + ".ts");
+
+      if (!fs.existsSync(pomFilePath)) {
+        orphanedPOMs.push(pom);
+      }
+    }
+
+    if (orphanedPOMs.length === 0) {
+      vscode.window.showInformationMessage(
+        "No orphaned Page Objects found. All referenced files exist."
+      );
+      return;
+    }
+
+    // Show orphaned POMs to user
+    const confirm = await vscode.window.showWarningMessage(
+      `Found ${
+        orphanedPOMs.length
+      } orphaned Page Object(s) in PageFactory:\n\n${orphanedPOMs
+        .map((pom) => `• ${pom.className} (${pom.importPath})`)
+        .join(
+          "\n"
+        )}\n\nThese files no longer exist. Remove them from PageFactory?`,
+      "Yes, Clean Up",
+      "Cancel"
+    );
+
+    if (confirm !== "Yes, Clean Up") {
+      return;
+    }
+
+    // Remove orphaned POMs
+    await removePOMsFromPageFactory(
+      pageFactoryPath,
+      orphanedPOMs.map((pom) => pom.className)
+    );
+
+    vscode.window.showInformationMessage(
+      `Successfully cleaned up ${orphanedPOMs.length} orphaned Page Object(s) from PageFactory`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Error cleaning up orphaned Page Objects: ${error}`
+    );
+  }
+}
 
 // ==================== PageFactory Path Management ====================
 
