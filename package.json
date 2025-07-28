@@ -145,6 +145,11 @@
         "command": "snapwright.cleanupOrphanedPageObjects",
         "title": "Cleanup Orphaned Page Objects",
         "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.deletePageObject",
+        "title": "Delete Page Object",
+        "category": "SnapWright"
       }
     ],
     "snippets": [

@@ -159,6 +159,14 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Register command to delete Page Object
+  let deletePageObjectCommand = vscode.commands.registerCommand(
+    "snapwright.deletePageObject",
+    async () => {
+      await deletePageObject();
+    }
+  );
+
   context.subscriptions.push(createPageFactoryCommand);
   context.subscriptions.push(addPageObjectToFactoryCommand);
   context.subscriptions.push(createPageObjectClassCommand);
@@ -166,6 +174,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(removePageObjectFromFactoryCommand);
   context.subscriptions.push(deletePageFactoryCommand);
   context.subscriptions.push(cleanupOrphanedPageObjectsCommand);
+  context.subscriptions.push(deletePageObjectCommand);
 }
 
 // Helper function to check for PageFactory nesting
@@ -258,7 +267,9 @@ function checkForPageFactoryNesting(selectedPath: string): {
   };
 }
 
-async function createPageFactory(openFileAfterCreation: boolean = true): Promise<string | undefined> {
+async function createPageFactory(
+  openFileAfterCreation: boolean = true
+): Promise<string | undefined> {
   try {
     // Get workspace folders
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -632,6 +643,208 @@ async function addPageObjectToFactory() {
   } catch (error) {
     vscode.window.showErrorMessage(
       `Error adding Page Object classes: ${error}`
+    );
+  }
+}
+
+// Enhanced version of addPageObjectToFactory that pre-selects a specific POM file
+async function addPageObjectToFactoryWithPreselection(
+  preselectedFilePath: string,
+  preselectedClassName: string
+) {
+  try {
+    // Get workspace folders
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Select PageFactory using the path management system
+    const pageFactoryPath = await selectPageFactoryPath();
+    console.log("Selected PageFactory path:", pageFactoryPath);
+
+    if (!pageFactoryPath) {
+      console.log("No PageFactory path selected, cancelling injection");
+      return; // User cancelled selection
+    }
+
+    // Validate paths before using them
+    if (!preselectedFilePath || !pageFactoryPath) {
+      console.error(
+        "Invalid paths - preselectedFilePath:",
+        preselectedFilePath,
+        "pageFactoryPath:",
+        pageFactoryPath
+      );
+      vscode.window.showErrorMessage(
+        "Invalid file paths. Cannot add POM to PageFactory."
+      );
+      return;
+    }
+
+    // Confirm adding the specific POM to the selected PageFactory
+    const relativePath = path.relative(
+      workspaceFolders[0].uri.fsPath,
+      preselectedFilePath
+    );
+    const pfRelativePath = path.relative(
+      workspaceFolders[0].uri.fsPath,
+      pageFactoryPath
+    );
+
+    const confirmAdd = await vscode.window.showInformationMessage(
+      `Add ${preselectedClassName} (${relativePath}) to PageFactory (${pfRelativePath})?`,
+      "Yes, Add",
+      "Cancel"
+    );
+
+    if (confirmAdd !== "Yes, Add") {
+      return;
+    }
+
+    // Create file info for the pre-selected file
+    let stats;
+    try {
+      stats = fs.statSync(preselectedFilePath);
+    } catch (statError) {
+      console.error(
+        "Error getting file stats for:",
+        preselectedFilePath,
+        statError
+      );
+      vscode.window.showErrorMessage(
+        `Cannot access POM file: ${preselectedFilePath}`
+      );
+      return;
+    }
+
+    const selectedFiles = [
+      {
+        filePath: preselectedFilePath,
+        description: preselectedFilePath, // updatePageFactory expects this property
+        label: preselectedClassName,
+        className: preselectedClassName,
+        modifiedTime: stats.mtime,
+        createdTime: stats.birthtime,
+        stats: stats,
+      },
+    ];
+
+    console.log(
+      "About to update PageFactory:",
+      pageFactoryPath,
+      "with files:",
+      selectedFiles
+    );
+
+    // Update PageFactory with the pre-selected Page Object
+    await updatePageFactory(pageFactoryPath, selectedFiles);
+
+    vscode.window.showInformationMessage(
+      `Successfully added ${preselectedClassName} to PageFactory!`
+    );
+  } catch (error) {
+    console.error("Error adding Page Object to Factory:", error);
+    vscode.window.showErrorMessage(
+      `Error adding Page Object to PageFactory: ${error}`
+    );
+  }
+}
+
+// Version that directly uses a known PageFactory path (for seamless workflow)
+async function addPageObjectToFactoryWithKnownPath(
+  preselectedFilePath: string,
+  preselectedClassName: string,
+  knownPageFactoryPath: string
+) {
+  try {
+    // Get workspace folders
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Validate paths before using them
+    if (!preselectedFilePath || !knownPageFactoryPath) {
+      console.error(
+        "Invalid paths - preselectedFilePath:",
+        preselectedFilePath,
+        "knownPageFactoryPath:",
+        knownPageFactoryPath
+      );
+      vscode.window.showErrorMessage(
+        "Invalid file paths. Cannot add POM to PageFactory."
+      );
+      return;
+    }
+
+    // Confirm adding the specific POM to the known PageFactory
+    const relativePath = path.relative(
+      workspaceFolders[0].uri.fsPath,
+      preselectedFilePath
+    );
+    const pfRelativePath = path.relative(
+      workspaceFolders[0].uri.fsPath,
+      knownPageFactoryPath
+    );
+
+    const confirmAdd = await vscode.window.showInformationMessage(
+      `Add ${preselectedClassName} (${relativePath}) to the newly created PageFactory (${pfRelativePath})?`,
+      "Yes, Add",
+      "Cancel"
+    );
+
+    if (confirmAdd !== "Yes, Add") {
+      return;
+    }
+
+    // Create file info for the pre-selected file
+    let stats;
+    try {
+      stats = fs.statSync(preselectedFilePath);
+    } catch (statError) {
+      console.error(
+        "Error getting file stats for:",
+        preselectedFilePath,
+        statError
+      );
+      vscode.window.showErrorMessage(
+        `Cannot access POM file: ${preselectedFilePath}`
+      );
+      return;
+    }
+
+    const selectedFiles = [
+      {
+        filePath: preselectedFilePath,
+        description: preselectedFilePath, // updatePageFactory expects this property
+        label: preselectedClassName,
+        className: preselectedClassName,
+        modifiedTime: stats.mtime,
+        createdTime: stats.birthtime,
+        stats: stats,
+      },
+    ];
+
+    console.log(
+      "About to update known PageFactory:",
+      knownPageFactoryPath,
+      "with files:",
+      selectedFiles
+    );
+
+    // Update PageFactory with the pre-selected Page Object
+    await updatePageFactory(knownPageFactoryPath, selectedFiles);
+
+    vscode.window.showInformationMessage(
+      `Successfully added ${preselectedClassName} to PageFactory!`
+    );
+  } catch (error) {
+    console.error("Error adding Page Object to known PageFactory:", error);
+    vscode.window.showErrorMessage(
+      `Error adding Page Object to PageFactory: ${error}`
     );
   }
 }
@@ -1237,6 +1450,7 @@ async function createPageObjectClass() {
           console.log("PageFactory creation result:", newPageFactoryPath);
           if (newPageFactoryPath) {
             // PageFactory was successfully created, calculate the import path and continue
+            pageFactoryPath = newPageFactoryPath; // Store the new PageFactory path
             relativeImportPath = getRelativePageFactoryPath(
               filePath,
               newPageFactoryPath
@@ -1257,7 +1471,12 @@ async function createPageObjectClass() {
     }
 
     // Generate Page Object class content with chosen pattern
-    console.log("Generating POM content with pattern:", instantiationPattern.value, "and import path:", relativeImportPath);
+    console.log(
+      "Generating POM content with pattern:",
+      instantiationPattern.value,
+      "and import path:",
+      relativeImportPath
+    );
     const pageObjectContent = generatePageObjectClassTemplate(
       className,
       instantiationPattern.value,
@@ -1280,6 +1499,48 @@ async function createPageObjectClass() {
     vscode.window.showInformationMessage(
       `Successfully created ${className}${extensionConfig.fileExtensions.pageObject} Page Object class ${patternDescription}!`
     );
+
+    console.log("POM creation successful, offering PageFactory injection...");
+    console.log("Available PageFactory path:", pageFactoryPath);
+
+    // Immediately offer to add the newly created POM to a PageFactory
+    try {
+      const addToFactory = await vscode.window.showInformationMessage(
+        `Would you like to add ${className} to a PageFactory?`,
+        "Yes, Add to PageFactory",
+        "No, Done"
+      );
+
+      console.log("User choice for PageFactory injection:", addToFactory);
+
+      if (addToFactory === "Yes, Add to PageFactory") {
+        try {
+          // If we have a PageFactory path from the creation process, use it directly
+          if (pageFactoryPath) {
+            console.log("Using known PageFactory path:", pageFactoryPath);
+            await addPageObjectToFactoryWithKnownPath(
+              filePath,
+              className,
+              pageFactoryPath
+            );
+          } else {
+            // Use the standard selection process
+            await addPageObjectToFactoryWithPreselection(filePath, className);
+          }
+        } catch (error) {
+          console.error("Error adding POM to PageFactory:", error);
+          vscode.window.showErrorMessage(
+            `Failed to add ${className} to PageFactory. You can add it manually later using the 'Add Page Objects to Page Factory' command.`
+          );
+        }
+      }
+    } catch (injectionError) {
+      console.error(
+        "Error during PageFactory injection prompt:",
+        injectionError
+      );
+      // Don't show error to user since POM creation was successful
+    }
   } catch (error) {
     console.error("Error creating Page Object class:", error);
     vscode.window.showErrorMessage("Failed to create Page Object class");
@@ -1915,6 +2176,349 @@ async function extractPageObjectGetters(
       .filter((name) => name && name !== "getPage");
   } catch {
     return [];
+  }
+}
+
+// Delete Page Object with smart reference checking
+async function deletePageObject() {
+  try {
+    const extensionConfig = getExtensionConfig();
+
+    // Get current workspace
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders) {
+      vscode.window.showErrorMessage("No workspace folder found");
+      return;
+    }
+
+    // Find all Page Object files
+    const pageObjectFiles = await findAllPageObjectFiles(
+      workspaceFolders[0].uri.fsPath
+    );
+
+    if (pageObjectFiles.length === 0) {
+      vscode.window.showInformationMessage(
+        "No Page Object files found in workspace"
+      );
+      return;
+    }
+
+    // Let user select which POM to delete
+    const pomOptions = pageObjectFiles.map((filePath) => {
+      const className = extractClassNameFromFile(filePath);
+      const relativePath = path.relative(
+        workspaceFolders[0].uri.fsPath,
+        filePath
+      );
+      return {
+        label: `$(file) ${className}`,
+        description: relativePath,
+        detail: filePath,
+        filePath: filePath,
+        className: className,
+      };
+    });
+
+    const selectedPom = await vscode.window.showQuickPick(pomOptions, {
+      placeHolder: "Select Page Object to delete",
+      matchOnDescription: true,
+      matchOnDetail: true,
+    });
+
+    if (!selectedPom) {
+      return;
+    }
+
+    // Check for references across the workspace
+    const referenceCheck = await checkPageObjectReferences(
+      selectedPom.filePath,
+      selectedPom.className
+    );
+
+    // If POM is referenced elsewhere, prevent deletion
+    if (referenceCheck.hasExternalReferences) {
+      const referencesText = referenceCheck.externalReferences
+        .map(
+          (ref) =>
+            `• ${path.relative(
+              workspaceFolders[0].uri.fsPath,
+              ref.filePath
+            )} (line ${ref.lineNumber})`
+        )
+        .join("\n");
+
+      vscode.window.showWarningMessage(
+        `Cannot delete ${selectedPom.className}. It's referenced in other files:\n\n${referencesText}`,
+        { modal: true }
+      );
+      return;
+    }
+
+    // If POM is used in PageFactory, ask about removal
+    let removeFromPageFactory = false;
+    if (referenceCheck.pageFactoryUsage.length > 0) {
+      const pfUsageText = referenceCheck.pageFactoryUsage
+        .map((pf) => path.relative(workspaceFolders[0].uri.fsPath, pf.filePath))
+        .join(", ");
+
+      const choice = await vscode.window.showWarningMessage(
+        `${selectedPom.className} is used in PageFactory: ${pfUsageText}\n\nWould you like to remove it from PageFactory as well?`,
+        { modal: true },
+        "Remove from PageFactory",
+        "Keep in PageFactory",
+        "Cancel"
+      );
+
+      if (choice === "Cancel") {
+        return;
+      }
+
+      removeFromPageFactory = choice === "Remove from PageFactory";
+    }
+
+    // Final confirmation
+    const confirmMessage = removeFromPageFactory
+      ? `Delete ${selectedPom.className} and remove from PageFactory?`
+      : `Delete ${selectedPom.className}?`;
+
+    const finalConfirm = await vscode.window.showWarningMessage(
+      confirmMessage,
+      { modal: true },
+      "Delete",
+      "Cancel"
+    );
+
+    if (finalConfirm !== "Delete") {
+      return;
+    }
+
+    // Remove from PageFactory if requested
+    if (removeFromPageFactory) {
+      for (const pfUsage of referenceCheck.pageFactoryUsage) {
+        await removePageObjectFromPageFactory(
+          pfUsage.filePath,
+          selectedPom.className
+        );
+      }
+    }
+
+    // Delete the POM file
+    fs.unlinkSync(selectedPom.filePath);
+
+    vscode.window.showInformationMessage(
+      `${selectedPom.className} deleted successfully${
+        removeFromPageFactory ? " and removed from PageFactory" : ""
+      }`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to delete Page Object: ${error}`);
+  }
+}
+
+// Find all Page Object files in workspace
+async function findAllPageObjectFiles(
+  workspacePath: string
+): Promise<string[]> {
+  const files: string[] = [];
+  const extensionConfig = getExtensionConfig();
+
+  function walkDir(currentPath: string) {
+    try {
+      const items = fs.readdirSync(currentPath);
+
+      for (const item of items) {
+        const fullPath = path.join(currentPath, item);
+        const stat = fs.statSync(fullPath);
+
+        if (
+          stat.isDirectory() &&
+          !item.startsWith(".") &&
+          item !== "node_modules"
+        ) {
+          walkDir(fullPath);
+        } else if (
+          item.endsWith(extensionConfig.fileExtensions.typescript) &&
+          !isPageFactoryFile(fullPath) &&
+          isPageObjectFile(fullPath)
+        ) {
+          files.push(fullPath);
+        }
+      }
+    } catch (error) {
+      // Ignore permission errors
+    }
+  }
+
+  walkDir(workspacePath);
+  return files;
+}
+
+// Check if file is a Page Object
+function isPageObjectFile(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+
+    // Look for export class patterns that are not PageFactory
+    const classPatterns = [
+      /export\s+class\s+\w+/,
+      /class\s+\w+/,
+      /export\s+default\s+class\s+\w+/,
+    ];
+
+    const hasClass = classPatterns.some((pattern) => pattern.test(content));
+
+    // Should have class but not be PageFactory
+    return hasClass && !isPageFactoryFile(filePath);
+  } catch (error) {
+    return false;
+  }
+}
+
+// Extract class name from file
+function extractClassNameFromFile(filePath: string): string {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const classMatch = content.match(/export\s+(?:default\s+)?class\s+(\w+)/);
+    return classMatch ? classMatch[1] : path.basename(filePath, ".ts");
+  } catch (error) {
+    return path.basename(filePath, ".ts");
+  }
+}
+
+// Check Page Object references across workspace
+async function checkPageObjectReferences(
+  pomFilePath: string,
+  className: string
+): Promise<{
+  hasExternalReferences: boolean;
+  externalReferences: Array<{
+    filePath: string;
+    lineNumber: number;
+    content: string;
+  }>;
+  pageFactoryUsage: Array<{ filePath: string; type: "instance" | "import" }>;
+}> {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders) {
+    return {
+      hasExternalReferences: false,
+      externalReferences: [],
+      pageFactoryUsage: [],
+    };
+  }
+
+  const externalReferences: Array<{
+    filePath: string;
+    lineNumber: number;
+    content: string;
+  }> = [];
+  const pageFactoryUsage: Array<{
+    filePath: string;
+    type: "instance" | "import";
+  }> = [];
+
+  // Find all TypeScript files in workspace
+  const allTsFiles = findTSFiles(workspaceFolders[0].uri.fsPath);
+
+  for (const filePath of allTsFiles) {
+    if (filePath === pomFilePath) continue; // Skip the POM file itself
+
+    try {
+      const content = fs.readFileSync(filePath, "utf8");
+      const lines = content.split("\n");
+
+      const isPageFactoryFileCheck = isPageFactoryFile(filePath);
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineNumber = i + 1;
+
+        // Check for class name references
+        if (line.includes(className)) {
+          if (isPageFactoryFileCheck) {
+            // Check if it's an instance usage in PageFactory
+            if (
+              line.includes(`private _${className.toLowerCase()}`) ||
+              line.includes(`get${className}`) ||
+              line.includes(`return this._${className.toLowerCase()}`)
+            ) {
+              pageFactoryUsage.push({ filePath, type: "instance" });
+            } else if (line.includes(`import`) && line.includes(className)) {
+              pageFactoryUsage.push({ filePath, type: "import" });
+            }
+          } else {
+            // External reference in other files
+            if (
+              (line.includes(`import`) && line.includes(className)) ||
+              line.includes(`new ${className}`) ||
+              line.includes(`${className}.`) ||
+              line.includes(`: ${className}`) ||
+              line.includes(`<${className}>`)
+            ) {
+              externalReferences.push({
+                filePath,
+                lineNumber,
+                content: line.trim(),
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error reading file ${filePath}:`, error);
+    }
+  }
+
+  return {
+    hasExternalReferences: externalReferences.length > 0,
+    externalReferences,
+    pageFactoryUsage,
+  };
+}
+
+// Find all TypeScript files in workspace - use existing findTSFiles function
+
+// Remove Page Object from PageFactory file
+async function removePageObjectFromPageFactory(
+  pageFactoryPath: string,
+  className: string
+): Promise<void> {
+  try {
+    const content = fs.readFileSync(pageFactoryPath, "utf8");
+    let updatedContent = content;
+
+    const propertyName = `_${className.toLowerCase()}`;
+    const getterName = `get${className}`;
+
+    // Remove import line
+    const importRegex = new RegExp(
+      `import\\s*{[^}]*\\b${className}\\b[^}]*}\\s*from[^;]+;\\s*\n?`,
+      "gm"
+    );
+    updatedContent = updatedContent.replace(importRegex, "");
+
+    // Remove property declaration
+    const propertyRegex = new RegExp(
+      `\\s*private\\s+${propertyName}[^;]*;\\s*\n?`,
+      "gm"
+    );
+    updatedContent = updatedContent.replace(propertyRegex, "");
+
+    // Remove getter method
+    const getterRegex = new RegExp(
+      `\\s*${getterName}\\([^)]*\\)[^}]*{[^}]*}\\s*\n?`,
+      "gms"
+    );
+    updatedContent = updatedContent.replace(getterRegex, "");
+
+    // Clean up any extra commas or whitespace
+    updatedContent = updatedContent.replace(/,\s*,/g, ",");
+    updatedContent = updatedContent.replace(/{\s*,/g, "{");
+    updatedContent = updatedContent.replace(/,\s*}/g, "}");
+
+    fs.writeFileSync(pageFactoryPath, updatedContent, "utf8");
+  } catch (error) {
+    throw new Error(`Failed to remove ${className} from PageFactory: ${error}`);
   }
 }
 
