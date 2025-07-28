@@ -1695,25 +1695,148 @@ async function usePageObjectFromFactory() {
     const [, varName, getterName, pageParam] = match;
     const hasPageParam = pageParam.trim() === "page";
 
-    // Check if imports already exist
+    // Check if imports already exist and handle smart import consolidation
     const documentText = editor.document.getText();
-    const existingImports = extractExistingImportsFromDocument(documentText);
+    const targetImportPath = getRelativePageFactoryPath(
+      editor.document.uri.fsPath,
+      pageFactoryPath
+    );
 
-    // Step 1: Add import first (if needed)
-    let needsImport = !existingImports.includes(getterName);
+    console.log("=== SMART IMPORT CONSOLIDATION ===");
+    console.log("Target import path:", targetImportPath);
+    console.log("Getter to import:", getterName);
+
+    // Find existing import from the same file
+    const lines = documentText.split("\n");
+    let existingImportLineIndex = -1;
+    let existingImports: string[] = [];
+    let needsImport = true;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (
+        line.startsWith("import") &&
+        line.includes("from") &&
+        line.includes("{") &&
+        line.includes("}")
+      ) {
+        // Extract the import path from this line
+        const fromMatch = line.match(/from\s+['"]([^'"]+)['"]/);
+        if (fromMatch) {
+          const importPath = fromMatch[1];
+
+          // Check if this import is from the same file (normalize paths for comparison)
+          const normalizedImportPath = importPath.replace(/\\/g, "/");
+          const normalizedTargetPath = targetImportPath.replace(/\\/g, "/");
+
+          if (normalizedImportPath === normalizedTargetPath) {
+            console.log(
+              `Found existing import from same file at line ${i + 1}:`,
+              line
+            );
+            existingImportLineIndex = i;
+
+            // Extract existing imports
+            const importsMatch = line.match(/import\s*\{([^}]+)\}/);
+            if (importsMatch) {
+              existingImports = importsMatch[1]
+                .split(",")
+                .map((imp) => imp.trim())
+                .filter((imp) => imp.length > 0);
+
+              console.log("Existing imports from this file:", existingImports);
+
+              // Check if the getter is already imported
+              if (existingImports.includes(getterName)) {
+                console.log(`${getterName} is already imported`);
+                needsImport = false;
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // Step 1: Handle import (either add new or consolidate existing)
     if (needsImport) {
-      const importLine = `import { ${getterName} } from '${getRelativePageFactoryPath(
-        editor.document.uri.fsPath,
-        pageFactoryPath
-      )}';\n`;
+      if (existingImportLineIndex >= 0) {
+        // Consolidate with existing import
+        console.log("Consolidating with existing import...");
 
-      // Find the best place to insert import
-      const importPosition = findImportInsertionPosition(documentText);
-      await editor.edit((editBuilder) => {
-        editBuilder.insert(new vscode.Position(importPosition, 0), importLine);
-      });
+        // Add the new getter to existing imports
+        const updatedImports = [...existingImports, getterName];
 
-      vscode.window.showInformationMessage(`Import added: ${getterName}`);
+        // Sort alphabetically
+        updatedImports.sort();
+
+        // Create the new consolidated import line
+        const consolidatedImportLine = `import { ${updatedImports.join(
+          ", "
+        )} } from '${targetImportPath}';`;
+
+        console.log("New consolidated import line:", consolidatedImportLine);
+
+        // Replace the existing import line
+        await editor.edit((editBuilder) => {
+          const lineToReplace = lines[existingImportLineIndex];
+          const lineRange = new vscode.Range(
+            new vscode.Position(existingImportLineIndex, 0),
+            new vscode.Position(existingImportLineIndex, lineToReplace.length)
+          );
+          editBuilder.replace(lineRange, consolidatedImportLine);
+        });
+
+        vscode.window.showInformationMessage(
+          `Consolidated import: added ${getterName} to existing import`
+        );
+      } else {
+        // Add new import line
+        console.log("Adding new import line...");
+
+        const importLine = `import { ${getterName} } from '${targetImportPath}';\n`;
+
+        // Find the best place to insert import
+        const importPosition = findImportInsertionPosition(documentText);
+        await editor.edit((editBuilder) => {
+          editBuilder.insert(
+            new vscode.Position(importPosition, 0),
+            importLine
+          );
+        });
+
+        vscode.window.showInformationMessage(`Import added: ${getterName}`);
+      }
+    } else {
+      vscode.window.showInformationMessage(
+        `${getterName} is already imported - skipping import step`
+      );
+    }
+
+    console.log("=== END SMART IMPORT CONSOLIDATION ===");
+
+    // Check if getter is already being used
+    const getterUsageRegex = new RegExp(`\\b${getterName}\\s*\\(`, "g");
+    const getterUsageMatches = documentText.match(getterUsageRegex);
+
+    if (getterUsageMatches && getterUsageMatches.length > 0) {
+      const constDeclarationRegex = new RegExp(
+        `const\\s+\\w+\\s*=\\s*${getterName}\\s*\\(`,
+        "g"
+      );
+      const constMatches = documentText.match(constDeclarationRegex);
+
+      if (constMatches && constMatches.length > 0) {
+        const proceed = await vscode.window.showWarningMessage(
+          `"${getterName}" is already used ${constMatches.length} time(s) in this file. Add another usage?`,
+          "Yes, Add Another",
+          "No, Cancel"
+        );
+
+        if (proceed !== "Yes, Add Another") {
+          return;
+        }
+      }
     }
 
     // Step 2: Ask user to place cursor where they want the const assignment
