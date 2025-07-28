@@ -5,6 +5,70 @@ import * as path from "path";
 // Global variable to store extension context for state management
 let extensionContext: vscode.ExtensionContext;
 
+// Configuration interface for dynamic settings
+interface ExtensionConfig {
+  fileExtensions: {
+    pageObject: string;
+    pageFactory: string;
+    typescript: string;
+  };
+  namingConventions: {
+    classSuffix: string;
+    propertyPrefix: string;
+    fileNameCase: "camelCase" | "kebab-case" | "snake_case";
+  };
+  templates: {
+    pageFactory: string;
+    pageObjectClass: string;
+  };
+  validation: {
+    classNamePattern: string;
+    fileNamePattern: string;
+    preventNesting: boolean;
+  };
+  importPaths: {
+    defaultPrefix: string;
+    useRelativePaths: boolean;
+  };
+}
+
+// Get dynamic configuration from VS Code settings or defaults
+function getExtensionConfig(): ExtensionConfig {
+  const config = vscode.workspace.getConfiguration("snapwright");
+
+  return {
+    fileExtensions: {
+      pageObject: config.get("fileExtensions.pageObject", ".page.ts"),
+      pageFactory: config.get("fileExtensions.pageFactory", ".ts"),
+      typescript: config.get("fileExtensions.typescript", ".ts"),
+    },
+    namingConventions: {
+      classSuffix: config.get("namingConventions.classSuffix", "Page"),
+      propertyPrefix: config.get("namingConventions.propertyPrefix", "_"),
+      fileNameCase: config.get("namingConventions.fileNameCase", "camelCase"),
+    },
+    templates: {
+      pageFactory: config.get("templates.pageFactory", ""),
+      pageObjectClass: config.get("templates.pageObjectClass", ""),
+    },
+    validation: {
+      classNamePattern: config.get(
+        "validation.classNamePattern",
+        "^[a-zA-Z][a-zA-Z0-9]*$"
+      ),
+      fileNamePattern: config.get(
+        "validation.fileNamePattern",
+        "^[a-zA-Z][a-zA-Z0-9]*$"
+      ),
+      preventNesting: config.get("validation.preventNesting", true),
+    },
+    importPaths: {
+      defaultPrefix: config.get("importPaths.defaultPrefix", "./"),
+      useRelativePaths: config.get("importPaths.useRelativePaths", true),
+    },
+  };
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log("SnapWright extension is now active!");
 
@@ -21,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to add Page Object classes to PageFactory
   let addPageObjectToFactoryCommand = vscode.commands.registerCommand(
-    "snapwright.addPOMToFactory",
+    "snapwright.addPageObjectToFactory",
     async () => {
       await addPageObjectToFactory();
     }
@@ -29,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to create Page Object class
   let createPageObjectClassCommand = vscode.commands.registerCommand(
-    "snapwright.createPOMClass",
+    "snapwright.createPageObjectClass",
     async () => {
       await createPageObjectClass();
     }
@@ -37,7 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to use Page Object from PageFactory
   let usePageObjectFromFactoryCommand = vscode.commands.registerCommand(
-    "snapwright.usePOMFromFactory",
+    "snapwright.usePageObjectFromFactory",
     async () => {
       await usePageObjectFromFactory();
     }
@@ -45,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register command to remove Page Object from PageFactory
   let removePageObjectFromFactoryCommand = vscode.commands.registerCommand(
-    "snapwright.removePOMFromFactory",
+    "snapwright.removePageObjectFromFactory",
     async () => {
       await removePageObjectFromFactory();
     }
@@ -76,6 +140,91 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(cleanupOrphanedPageObjectsCommand);
 }
 
+// Helper function to check for PageFactory nesting
+function checkForPageFactoryNesting(selectedPath: string): {
+  hasParentPageFactory: boolean;
+  hasChildPageFactory: boolean;
+  parentPath?: string;
+  childPath?: string;
+} {
+  const extensionConfig = getExtensionConfig();
+
+  // Check for parent PageFactory by walking up the directory tree
+  let currentPath = path.dirname(selectedPath);
+  let hasParentPageFactory = false;
+  let parentPath: string | undefined;
+
+  while (currentPath !== path.dirname(currentPath)) {
+    // Stop at root
+    const items = fs.readdirSync(currentPath);
+    const pageFactoryFile = items.find(
+      (item) =>
+        item.includes("PageFactory") &&
+        item.endsWith(extensionConfig.fileExtensions.pageFactory)
+    );
+
+    if (pageFactoryFile) {
+      hasParentPageFactory = true;
+      parentPath = path.join(currentPath, pageFactoryFile);
+      break;
+    }
+
+    currentPath = path.dirname(currentPath);
+  }
+
+  // Check for child PageFactory by walking down the directory tree
+  let hasChildPageFactory = false;
+  let childPath: string | undefined;
+
+  function walkDown(dirPath: string): boolean {
+    try {
+      const items = fs.readdirSync(dirPath);
+
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item);
+        const stat = fs.statSync(fullPath);
+
+        if (
+          stat.isDirectory() &&
+          !item.startsWith(".") &&
+          item !== "node_modules"
+        ) {
+          // Check if this directory contains a PageFactory
+          const subItems = fs.readdirSync(fullPath);
+          const pageFactoryFile = subItems.find(
+            (subItem) =>
+              subItem.includes("PageFactory") &&
+              subItem.endsWith(extensionConfig.fileExtensions.pageFactory)
+          );
+
+          if (pageFactoryFile) {
+            childPath = path.join(fullPath, pageFactoryFile);
+            return true;
+          }
+
+          // Recursively check subdirectories
+          if (walkDown(fullPath)) {
+            return true;
+          }
+        }
+      }
+    } catch (error) {
+      // Ignore permission errors
+    }
+
+    return false;
+  }
+
+  hasChildPageFactory = walkDown(selectedPath);
+
+  return {
+    hasParentPageFactory,
+    hasChildPageFactory,
+    parentPath,
+    childPath,
+  };
+}
+
 async function createPageFactory() {
   try {
     // Get workspace folders
@@ -91,20 +240,73 @@ async function createPageFactory() {
       return;
     }
 
+    // Get extension configuration for validation
+    const extensionConfig = getExtensionConfig();
+
+    // Step 1.5: Check for PageFactory nesting
+    if (extensionConfig.validation.preventNesting) {
+      const nestingCheck = checkForPageFactoryNesting(selectedFolder.fsPath);
+
+      if (nestingCheck.hasParentPageFactory) {
+        const relativePath = path.relative(
+          workspaceFolders[0].uri.fsPath,
+          nestingCheck.parentPath!
+        );
+        const action = await vscode.window.showWarningMessage(
+          `A PageFactory already exists in a parent directory at "${relativePath}". Creating nested PageFactories is not recommended as it violates architectural boundaries.\n\nDo you want to continue anyway?`,
+          "Continue Anyway",
+          "Choose Different Location",
+          "Cancel"
+        );
+
+        if (action === "Cancel") {
+          return;
+        } else if (action === "Choose Different Location") {
+          // Recursively call the function to let user choose again
+          return await createPageFactory();
+        }
+        // If "Continue Anyway", proceed with creation
+      }
+
+      if (nestingCheck.hasChildPageFactory) {
+        const relativePath = path.relative(
+          workspaceFolders[0].uri.fsPath,
+          nestingCheck.childPath!
+        );
+        const action = await vscode.window.showWarningMessage(
+          `A PageFactory already exists in a subdirectory at "${relativePath}". Creating a parent PageFactory over existing ones is not recommended as it violates architectural boundaries.\n\nDo you want to continue anyway?`,
+          "Continue Anyway",
+          "Choose Different Location",
+          "Cancel"
+        );
+
+        if (action === "Cancel") {
+          return;
+        } else if (action === "Choose Different Location") {
+          // Recursively call the function to let user choose again
+          return await createPageFactory();
+        }
+        // If "Continue Anyway", proceed with creation
+      }
+    }
+
     // Step 2: Get user-defined name for the PageFactory
     let pageFactoryName: string | undefined;
     let isValidName = false;
 
     while (!isValidName) {
       pageFactoryName = await vscode.window.showInputBox({
-        prompt: "Enter a unique name for your PageFactory",
-        placeHolder: "e.g., MainPageFactory, TestPageFactory",
+        prompt: `Enter a unique name for your PageFactory`,
+        placeHolder: `e.g., MainPageFactory, TestPageFactory`,
         validateInput: (value: string) => {
           if (!value || value.trim().length === 0) {
             return "PageFactory name cannot be empty";
           }
-          if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(value.trim())) {
-            return "PageFactory name must start with a letter and contain only letters and numbers";
+          const pattern = new RegExp(
+            extensionConfig.validation.classNamePattern
+          );
+          if (!pattern.test(value.trim())) {
+            return "PageFactory name must match the configured pattern";
           }
           return null;
         },
@@ -119,12 +321,12 @@ async function createPageFactory() {
       // Step 3: Validate uniqueness in directory only
       const pageFactoryPath = path.join(
         selectedFolder.fsPath,
-        `${pageFactoryName}.ts`
+        `${pageFactoryName}${extensionConfig.fileExtensions.pageFactory}`
       );
 
       if (fs.existsSync(pageFactoryPath)) {
         const action = await vscode.window.showWarningMessage(
-          `A PageFactory named "${pageFactoryName}.ts" already exists in this directory. Please choose a different name or overwrite the existing file.`,
+          `A PageFactory named "${pageFactoryName}${extensionConfig.fileExtensions.pageFactory}" already exists in this directory. Please choose a different name or overwrite the existing file.`,
           "Choose Different Name",
           "Overwrite Existing",
           "Cancel"
@@ -144,7 +346,7 @@ async function createPageFactory() {
 
     const pageFactoryPath = path.join(
       selectedFolder.fsPath,
-      `${pageFactoryName}.ts`
+      `${pageFactoryName}${extensionConfig.fileExtensions.pageFactory}`
     );
 
     // Step 5: Create PageFactory template
@@ -161,7 +363,7 @@ async function createPageFactory() {
     await vscode.window.showTextDocument(document);
 
     vscode.window.showInformationMessage(
-      `PageFactory "${pageFactoryName}.ts" created successfully and saved to your PageFactory list!`
+      `PageFactory "${pageFactoryName}${extensionConfig.fileExtensions.pageFactory}" created successfully and saved to your PageFactory list!`
     );
   } catch (error) {
     vscode.window.showErrorMessage(`Error creating PageFactory: ${error}`);
@@ -200,6 +402,7 @@ async function addPageObjectToFactory() {
     }
 
     // Get file information with stats for sorting
+    const extensionConfig = getExtensionConfig();
     const fileInfos = tsFiles.map((file) => {
       try {
         const stats = fs.statSync(file);
@@ -207,7 +410,7 @@ async function addPageObjectToFactory() {
         const classMatch = fileContent.match(/export\s+class\s+(\w+)/);
         const className = classMatch
           ? classMatch[1]
-          : path.basename(file, ".ts");
+          : path.basename(file, extensionConfig.fileExtensions.typescript);
 
         return {
           filePath: file,
@@ -221,7 +424,10 @@ async function addPageObjectToFactory() {
         const stats = fs.statSync(file);
         return {
           filePath: file,
-          className: path.basename(file, ".ts"),
+          className: path.basename(
+            file,
+            extensionConfig.fileExtensions.typescript
+          ),
           modifiedTime: stats.mtime,
           createdTime: stats.birthtime,
           stats: stats,
@@ -408,6 +614,22 @@ async function selectDirectory(
 
 function findTSFiles(dirPath: string): string[] {
   const files: string[] = [];
+  const extensionConfig = getExtensionConfig();
+
+  function isPageFactoryFile(filePath: string): boolean {
+    try {
+      const content = fs.readFileSync(filePath, "utf8");
+      // Check if file contains PageFactory class definition
+      return (
+        content.includes("class PageFactory") ||
+        content.includes("PageFactory.instance") ||
+        content.includes("export const pageFactory")
+      );
+    } catch (error) {
+      // If we can't read the file, check by filename
+      return path.basename(filePath).includes("PageFactory");
+    }
+  }
 
   function walkDir(currentPath: string) {
     const items = fs.readdirSync(currentPath);
@@ -419,9 +641,17 @@ function findTSFiles(dirPath: string): string[] {
       if (stat.isDirectory()) {
         walkDir(fullPath);
       } else if (
-        item.endsWith(".ts") &&
-        item !== "PageFactory.ts" &&
-        (item.endsWith(".page.ts") || !item.includes(".page."))
+        item.endsWith(extensionConfig.fileExtensions.typescript) &&
+        !isPageFactoryFile(fullPath) &&
+        (item.endsWith(extensionConfig.fileExtensions.pageObject) ||
+          (!extensionConfig.fileExtensions.pageObject.includes(".")
+            ? true
+            : !item.includes(
+                extensionConfig.fileExtensions.pageObject.replace(
+                  extensionConfig.fileExtensions.typescript,
+                  ""
+                )
+              )))
       ) {
         files.push(fullPath);
       }
@@ -436,6 +666,7 @@ async function findPageFactory(
   workspacePath: string
 ): Promise<string | undefined> {
   const files: string[] = [];
+  const extensionConfig = getExtensionConfig();
 
   function walkDir(currentPath: string) {
     try {
@@ -451,7 +682,10 @@ async function findPageFactory(
           item !== "node_modules"
         ) {
           walkDir(fullPath);
-        } else if (item === "PageFactory.ts") {
+        } else if (
+          item.includes("PageFactory") &&
+          item.endsWith(extensionConfig.fileExtensions.pageFactory)
+        ) {
           files.push(fullPath);
         }
       }
@@ -465,6 +699,13 @@ async function findPageFactory(
 }
 
 function generatePageFactoryTemplate(): string {
+  const extensionConfig = getExtensionConfig();
+
+  // Use custom template if provided, otherwise use default
+  if (extensionConfig.templates.pageFactory) {
+    return extensionConfig.templates.pageFactory;
+  }
+
   return `import { type Page } from "@playwright/test";
 
 /**
@@ -542,10 +783,23 @@ async function updatePageFactory(
       path.dirname(pageFactoryPath),
       file.description
     );
-    const importPath = relativePath.replace(/\\/g, "/").replace(".ts", "");
-    const importStatement = `import { ${className} } from './${importPath}';`;
-    const propertyName = `_${classNameToCamelCase(className)}`;
-    const getterName = classNameToCamelCase(className);
+    const extensionConfig = getExtensionConfig();
+    const importPath = relativePath
+      .replace(/\\/g, "/")
+      .replace(extensionConfig.fileExtensions.typescript, "");
+
+    // Generate import path based on configuration
+    const finalImportPath = extensionConfig.importPaths.useRelativePaths
+      ? importPath.startsWith(".")
+        ? importPath
+        : `${extensionConfig.importPaths.defaultPrefix}${importPath}`
+      : importPath;
+
+    const importStatement = `import { ${className} } from '${finalImportPath}';`;
+    const propertyName = `${
+      extensionConfig.namingConventions.propertyPrefix
+    }${classNameToPropertyCase(className)}`;
+    const getterName = classNameToPropertyCase(className);
 
     // Check if import already exists
     if (
@@ -731,18 +985,18 @@ async function createPageFactoryInstance() {
       document.uri.fsPath
     );
     if (pageFactoryPath) {
-      textToInsert += `import { getHomePage, getLoginPage } from '${pageFactoryPath}';\n\n`;
+      textToInsert += `import { getDynamicPage } from '${pageFactoryPath}';\n\n`;
     } else {
-      textToInsert += `import { getHomePage, getLoginPage } from './PageFactory';\n\n`;
+      textToInsert += `import { getDynamicPage } from './PageFactory';\n\n`;
     }
   }
 
   // Add example usage with new pattern
   textToInsert += `// Option 1: Pass page for explicit page setting
-await getHomePage(page).navigate();
+await getDynamicPage(page).navigate();
 
 // Option 2: Use without page if already set
-await getLoginPage().login("user", "pass");`;
+await getDynamicPage().performAction();`;
 
   // Insert at cursor position
   const position = editor.selection.active;
@@ -761,11 +1015,14 @@ async function findPageFactoryRelativePath(
   if (savedPaths.length > 0) {
     // Use the first saved path (most recently used)
     const pageFactoryPath = savedPaths[0].path;
+    const extensionConfig = getExtensionConfig();
     const relativePath = path.relative(
       path.dirname(currentFilePath),
       pageFactoryPath
     );
-    return relativePath.replace(/\\/g, "/").replace(".ts", "");
+    return relativePath
+      .replace(/\\/g, "/")
+      .replace(extensionConfig.fileExtensions.pageFactory, "");
   }
 
   // Fallback to old method if no saved paths
@@ -775,16 +1032,30 @@ async function findPageFactoryRelativePath(
   const pageFactoryPath = await findPageFactory(workspaceFolders[0].uri.fsPath);
   if (!pageFactoryPath) return null;
 
+  const extensionConfig = getExtensionConfig();
   const relativePath = path.relative(
     path.dirname(currentFilePath),
     pageFactoryPath
   );
-  return relativePath.replace(/\\/g, "/").replace(".ts", "");
+  return relativePath
+    .replace(/\\/g, "/")
+    .replace(extensionConfig.fileExtensions.pageFactory, "");
 }
 
-// Helper function to convert class name to camelCase
-function classNameToCamelCase(className: string): string {
-  return className.charAt(0).toLowerCase() + className.slice(1);
+// Helper function to convert class name to the configured naming convention
+function classNameToPropertyCase(className: string): string {
+  const extensionConfig = getExtensionConfig();
+  const baseCase = className.charAt(0).toLowerCase() + className.slice(1);
+
+  switch (extensionConfig.namingConventions.fileNameCase) {
+    case "kebab-case":
+      return baseCase.replace(/([A-Z])/g, "-$1").toLowerCase();
+    case "snake_case":
+      return baseCase.replace(/([A-Z])/g, "_$1").toLowerCase();
+    case "camelCase":
+    default:
+      return baseCase;
+  }
 }
 
 // Helper function to process class name and generate filename
@@ -793,26 +1064,47 @@ function processClassAndFileName(userInput: string): {
   fileName: string;
 } {
   const trimmedInput = userInput.trim();
+  const extensionConfig = getExtensionConfig();
+  const suffix = extensionConfig.namingConventions.classSuffix;
 
-  // Check if input already ends with "Page"
-  const endsWithPage = trimmedInput.toLowerCase().endsWith("page");
+  // Check if input already ends with the configured suffix
+  const endsWithSuffix = trimmedInput
+    .toLowerCase()
+    .endsWith(suffix.toLowerCase());
 
-  // Generate class name (always ends with "Page")
-  const className = endsWithPage ? trimmedInput : trimmedInput + "Page";
+  // Generate class name (always ends with configured suffix)
+  const className = endsWithSuffix ? trimmedInput : trimmedInput + suffix;
 
-  // Generate filename (remove "Page" if present, convert to camelCase, add .page.ts)
+  // Generate filename (remove suffix if present, convert to configured case, add page object extension)
   let baseFileName;
-  if (endsWithPage) {
-    // Remove "Page" from the end
-    baseFileName = trimmedInput.slice(0, -4); // Remove last 4 characters ("Page")
+  if (endsWithSuffix) {
+    // Remove suffix from the end
+    baseFileName = trimmedInput.slice(0, -suffix.length);
   } else {
     baseFileName = trimmedInput;
   }
 
-  // Convert to camelCase for filename
-  const camelCaseFileName =
-    baseFileName.charAt(0).toLowerCase() + baseFileName.slice(1);
-  const fileName = `${camelCaseFileName}.page.ts`;
+  // Convert to configured case for filename
+  let finalFileName;
+  switch (extensionConfig.namingConventions.fileNameCase) {
+    case "kebab-case":
+      finalFileName = baseFileName.replace(/([A-Z])/g, (match, letter, index) =>
+        index === 0 ? letter.toLowerCase() : "-" + letter.toLowerCase()
+      );
+      break;
+    case "snake_case":
+      finalFileName = baseFileName.replace(/([A-Z])/g, (match, letter, index) =>
+        index === 0 ? letter.toLowerCase() : "_" + letter.toLowerCase()
+      );
+      break;
+    case "camelCase":
+    default:
+      finalFileName =
+        baseFileName.charAt(0).toLowerCase() + baseFileName.slice(1);
+      break;
+  }
+
+  const fileName = `${finalFileName}${extensionConfig.fileExtensions.pageObject}`;
 
   return { className, fileName };
 }
@@ -834,16 +1126,17 @@ async function createPageObjectClass() {
     }
 
     // Get class name from user
+    const extensionConfig = getExtensionConfig();
     const userInput = await vscode.window.showInputBox({
-      prompt:
-        "Enter the Page Object class name (e.g., Home, Login, HomePage, LoginPage)",
+      prompt: `Enter the Page Object class name (e.g., Home, Login, Home${extensionConfig.namingConventions.classSuffix}, Login${extensionConfig.namingConventions.classSuffix})`,
       placeHolder: "Home",
       validateInput: (value: string) => {
         if (!value || value.trim() === "") {
           return "Class name cannot be empty";
         }
-        if (!/^[A-Z][a-zA-Z0-9]*$/.test(value)) {
-          return "Class name must start with uppercase letter and contain only letters and numbers";
+        const pattern = new RegExp(extensionConfig.validation.classNamePattern);
+        if (!pattern.test(value)) {
+          return "Class name must match the configured pattern";
         }
         return null;
       },
@@ -874,7 +1167,7 @@ async function createPageObjectClass() {
     await vscode.window.showTextDocument(document);
 
     vscode.window.showInformationMessage(
-      `Successfully created ${className}.ts Page Object class!`
+      `Successfully created ${className}${extensionConfig.fileExtensions.pageObject} Page Object class!`
     );
   } catch (error) {
     console.error("Error creating Page Object class:", error);
@@ -884,6 +1177,17 @@ async function createPageObjectClass() {
 
 // Function to generate Page Object class template
 function generatePageObjectClassTemplate(className: string): string {
+  const extensionConfig = getExtensionConfig();
+
+  // Use custom template if provided
+  if (extensionConfig.templates.pageObjectClass) {
+    return extensionConfig.templates.pageObjectClass.replace(
+      /\$\{className\}/g,
+      className
+    );
+  }
+
+  // Default template
   return `// import page from pagefactory here by default so as to allow the commands to execute upon it
 import { page } from '../PageFactory';
 
@@ -930,7 +1234,7 @@ async function usePageObjectFromFactory() {
     );
     if (!pageFactoryPath) {
       vscode.window.showErrorMessage(
-        "PageFactory.ts not found. Please create it first."
+        "PageFactory file not found. Please create it first."
       );
       return;
     }
@@ -939,7 +1243,7 @@ async function usePageObjectFromFactory() {
     const pageObjectGetters = await extractPageObjectGetters(pageFactoryPath);
     if (pageObjectGetters.length === 0) {
       vscode.window.showErrorMessage(
-        "No Page Object getters found in PageFactory.ts"
+        "No Page Object getters found in PageFactory file"
       );
       return;
     }
@@ -980,7 +1284,7 @@ async function usePageObjectFromFactory() {
 
     // Show quick pick
     const selectedOption = await vscode.window.showQuickPick(quickPickItems, {
-      placeHolder: "Select POM initialization pattern",
+      placeHolder: "Select Page Object initialization pattern",
       title: "Use Page Object from PageFactory",
     });
 
@@ -1065,24 +1369,24 @@ async function removePageObjectFromFactory() {
       return; // User cancelled selection
     }
 
-    // Extract existing POMs from PageFactory
-    const existingPOMs = await extractPageObjectsFromPageFactory(
+    // Extract existing Page Objects from PageFactory
+    const existingPageObjects = await extractPageObjectsFromPageFactory(
       pageFactoryPath
     );
 
-    if (existingPOMs.length === 0) {
+    if (existingPageObjects.length === 0) {
       vscode.window.showInformationMessage(
         "No Page Objects found in this PageFactory"
       );
       return;
     }
 
-    // Let user select which POMs to remove
-    const selectedPOMs = await vscode.window.showQuickPick(
-      existingPOMs.map((pom: PageObjectInfo) => ({
-        label: pom.className,
-        description: pom.getterName,
-        detail: `Import: ${pom.importPath}`,
+    // Let user select which Page Objects to remove
+    const selectedPageObjects = await vscode.window.showQuickPick(
+      existingPageObjects.map((pageObject: PageObjectInfo) => ({
+        label: pageObject.className,
+        description: pageObject.getterName,
+        detail: `Import: ${pageObject.importPath}`,
         picked: false,
       })),
       {
@@ -1092,14 +1396,16 @@ async function removePageObjectFromFactory() {
       }
     );
 
-    if (!selectedPOMs || selectedPOMs.length === 0) {
+    if (!selectedPageObjects || selectedPageObjects.length === 0) {
       return;
     }
 
     // Confirm deletion
-    const pomNames = selectedPOMs.map((pom) => pom.label).join(", ");
+    const pageObjectNames = selectedPageObjects
+      .map((pageObject) => pageObject.label)
+      .join(", ");
     const confirm = await vscode.window.showWarningMessage(
-      `Are you sure you want to remove these Page Objects from PageFactory?\n\n${pomNames}\n\nThis will remove imports, properties, getters, and exports.`,
+      `Are you sure you want to remove these Page Objects from PageFactory?\n\n${pageObjectNames}\n\nThis will remove imports, properties, getters, and exports.`,
       "Yes, Remove",
       "Cancel"
     );
@@ -1108,14 +1414,14 @@ async function removePageObjectFromFactory() {
       return;
     }
 
-    // Remove POMs from PageFactory
+    // Remove Page Objects from PageFactory
     await removePOMsFromPageFactory(
       pageFactoryPath,
-      selectedPOMs.map((pom) => pom.label)
+      selectedPageObjects.map((pageObject) => pageObject.label)
     );
 
     vscode.window.showInformationMessage(
-      `Successfully removed ${selectedPOMs.length} Page Object(s) from PageFactory`
+      `Successfully removed ${selectedPageObjects.length} Page Object(s) from PageFactory`
     );
   } catch (error) {
     vscode.window.showErrorMessage(`Error removing Page Objects: ${error}`);
@@ -1139,8 +1445,12 @@ async function deletePageFactory() {
     }
 
     // Get PageFactory info for confirmation
-    const pageFactoryName = path.basename(pageFactoryPath, ".ts");
-    const existingPOMs = await extractPageObjectsFromPageFactory(
+    const extensionConfig = getExtensionConfig();
+    const pageFactoryName = path.basename(
+      pageFactoryPath,
+      extensionConfig.fileExtensions.pageFactory
+    );
+    const existingPageObjects = await extractPageObjectsFromPageFactory(
       pageFactoryPath
     );
 
@@ -1148,10 +1458,10 @@ async function deletePageFactory() {
     let confirmMessage = `Are you sure you want to delete the PageFactory "${pageFactoryName}"?\n\n`;
     confirmMessage += `File: ${pageFactoryPath}\n\n`;
 
-    if (existingPOMs.length > 0) {
-      confirmMessage += `This will also remove ${existingPOMs.length} Page Object(s):\n`;
-      confirmMessage += existingPOMs
-        .map((pom: PageObjectInfo) => `• ${pom.className}`)
+    if (existingPageObjects.length > 0) {
+      confirmMessage += `This will also remove ${existingPageObjects.length} Page Object(s):\n`;
+      confirmMessage += existingPageObjects
+        .map((pageObject: PageObjectInfo) => `• ${pageObject.className}`)
         .join("\n");
       confirmMessage += "\n\n";
     }
@@ -1248,7 +1558,10 @@ async function extractPageObjectsFromPageFactory(
         const importPath = importMap.get(className);
 
         if (importPath && getterName !== "getPage") {
-          const propertyName = `_${classNameToCamelCase(className)}`;
+          const extensionConfig = getExtensionConfig();
+          const propertyName = `${
+            extensionConfig.namingConventions.propertyPrefix
+          }${classNameToPropertyCase(className)}`;
           const exportName = `get${className}`;
 
           pageObjects.push({
@@ -1268,7 +1581,7 @@ async function extractPageObjectsFromPageFactory(
   }
 }
 
-// Helper function to remove POMs from PageFactory
+// Helper function to remove Page Objects from PageFactory
 async function removePOMsFromPageFactory(
   pageFactoryPath: string,
   classNamesToRemove: string[]
@@ -1302,7 +1615,10 @@ async function removePOMsFromPageFactory(
 
     // Remove properties
     classNamesToRemove.forEach((className) => {
-      const propertyName = `_${classNameToCamelCase(className)}`;
+      const extensionConfig = getExtensionConfig();
+      const propertyName = `${
+        extensionConfig.namingConventions.propertyPrefix
+      }${classNameToPropertyCase(className)}`;
       const propertyRegex = new RegExp(
         `\\s*private\\s+${propertyName}:\\s*${className};?\\s*\\n?`,
         "g"
@@ -1338,7 +1654,7 @@ async function removePOMsFromPageFactory(
     const document = await vscode.workspace.openTextDocument(pageFactoryPath);
     await vscode.window.showTextDocument(document);
   } catch (error) {
-    throw new Error(`Failed to remove POMs from PageFactory: ${error}`);
+    throw new Error(`Failed to remove Page Objects from PageFactory: ${error}`);
   }
 }
 
@@ -1365,13 +1681,23 @@ function getRelativePageFactoryPath(
   currentFilePath: string,
   pageFactoryPath: string
 ): string {
+  const extensionConfig = getExtensionConfig();
   const relativePath = path.relative(
     path.dirname(currentFilePath),
     pageFactoryPath
   );
-  return relativePath.startsWith(".")
-    ? relativePath.replace(/\\/g, "/").replace(".ts", "")
-    : "./" + relativePath.replace(/\\/g, "/").replace(".ts", "");
+
+  let processedPath = relativePath
+    .replace(/\\/g, "/")
+    .replace(extensionConfig.fileExtensions.pageFactory, "");
+
+  if (extensionConfig.importPaths.useRelativePaths) {
+    return processedPath.startsWith(".")
+      ? processedPath
+      : extensionConfig.importPaths.defaultPrefix + processedPath;
+  }
+
+  return processedPath;
 }
 
 // Helper function to find best position for import insertion
@@ -1489,7 +1815,7 @@ async function detectCircularReference(
   }
 }
 
-// Extract POM getter methods from PageFactory
+// Extract Page Object getter methods from PageFactory
 async function extractPageObjectGetters(
   pageFactoryPath: string
 ): Promise<string[]> {
@@ -1530,44 +1856,50 @@ async function cleanupOrphanedPageObjects() {
       return; // User cancelled selection
     }
 
-    // Extract existing POMs from PageFactory
-    const existingPOMs = await extractPageObjectsFromPageFactory(
+    // Extract existing Page Objects from PageFactory
+    const existingPageObjects = await extractPageObjectsFromPageFactory(
       pageFactoryPath
     );
 
-    if (existingPOMs.length === 0) {
+    if (existingPageObjects.length === 0) {
       vscode.window.showInformationMessage(
         "No Page Objects found in this PageFactory"
       );
       return;
     }
 
-    // Check which POM files still exist
-    const orphanedPOMs: PageObjectInfo[] = [];
+    // Check which Page Object files still exist
+    const orphanedPageObjects: PageObjectInfo[] = [];
     const workspacePath = path.dirname(pageFactoryPath);
 
-    for (const pom of existingPOMs) {
-      // Construct the full path to the POM file
-      const pomFilePath = path.resolve(workspacePath, pom.importPath + ".ts");
+    for (const pageObject of existingPageObjects) {
+      // Construct the full path to the Page Object file
+      const extensionConfig = getExtensionConfig();
+      const pageObjectFilePath = path.resolve(
+        workspacePath,
+        pageObject.importPath + extensionConfig.fileExtensions.typescript
+      );
 
-      if (!fs.existsSync(pomFilePath)) {
-        orphanedPOMs.push(pom);
+      if (!fs.existsSync(pageObjectFilePath)) {
+        orphanedPageObjects.push(pageObject);
       }
     }
 
-    if (orphanedPOMs.length === 0) {
+    if (orphanedPageObjects.length === 0) {
       vscode.window.showInformationMessage(
         "No orphaned Page Objects found. All referenced files exist."
       );
       return;
     }
 
-    // Show orphaned POMs to user
+    // Show orphaned Page Objects to user
     const confirm = await vscode.window.showWarningMessage(
       `Found ${
-        orphanedPOMs.length
-      } orphaned Page Object(s) in PageFactory:\n\n${orphanedPOMs
-        .map((pom) => `• ${pom.className} (${pom.importPath})`)
+        orphanedPageObjects.length
+      } orphaned Page Object(s) in PageFactory:\n\n${orphanedPageObjects
+        .map(
+          (pageObject) => `• ${pageObject.className} (${pageObject.importPath})`
+        )
         .join(
           "\n"
         )}\n\nThese files no longer exist. Remove them from PageFactory?`,
@@ -1579,14 +1911,14 @@ async function cleanupOrphanedPageObjects() {
       return;
     }
 
-    // Remove orphaned POMs
+    // Remove orphaned Page Objects
     await removePOMsFromPageFactory(
       pageFactoryPath,
-      orphanedPOMs.map((pom) => pom.className)
+      orphanedPageObjects.map((pageObject) => pageObject.className)
     );
 
     vscode.window.showInformationMessage(
-      `Successfully cleaned up ${orphanedPOMs.length} orphaned Page Object(s) from PageFactory`
+      `Successfully cleaned up ${orphanedPageObjects.length} orphaned Page Object(s) from PageFactory`
     );
   } catch (error) {
     vscode.window.showErrorMessage(
@@ -1687,7 +2019,7 @@ async function selectPageFactoryPath(): Promise<string | null> {
   quickPickItems.push(
     {
       label: "$(add) Browse for new PageFactory file",
-      description: "Select a new PageFactory.ts file",
+      description: "Select a new PageFactory file",
       alwaysShow: true,
     },
     {
@@ -1749,15 +2081,18 @@ async function browseForPageFactory(): Promise<string | null> {
     return null;
   }
 
+  const extensionConfig = getExtensionConfig();
   const fileUri = await vscode.window.showOpenDialog({
     canSelectFiles: true,
     canSelectFolders: false,
     canSelectMany: false,
     defaultUri: workspaceFolders[0].uri,
     filters: {
-      "TypeScript Files": ["ts"],
+      "TypeScript Files": [
+        extensionConfig.fileExtensions.typescript.replace(".", ""),
+      ],
     },
-    title: "Select PageFactory.ts file",
+    title: "Select PageFactory file",
   });
 
   if (!fileUri || fileUri.length === 0) {

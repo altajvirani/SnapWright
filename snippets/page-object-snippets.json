@@ -49,6 +49,19 @@
     ],
     "description": "Complete PageFactory setup pattern with Command Palette guidance"
   },
+  "Dynamic Page Object Import": {
+    "prefix": "pfgetpage",
+    "body": [
+      "import { get${1:PageObjectName} } from '${2:./PageFactory}';",
+      "",
+      "// Option 1: Pass page explicitly",
+      "const ${3:pageInstance} = get${1:PageObjectName}(page);",
+      "",
+      "// Option 2: Use global page (if already set)",
+      "const ${3:pageInstance} = get${1:PageObjectName}();"
+    ],
+    "description": "Import and use Page Object with dynamic getter pattern"
+  },
   "Page Setup": {
     "prefix": "pfpage",
     "body": [

@@ -10,16 +10,16 @@ A Visual Studio Code extension that supercharges your Playwright TypeScript deve
 
 ### 🎯 **Smart Command Palette Integration**
 
-- **Dynamic POM Discovery**: Automatically reads your PageFactory and suggests available POM classes
-- **Interactive Selection**: Choose from real POM getters with/without page parameters
+- **Dynamic Page Object Discovery**: Automatically reads your PageFactory and suggests available Page Object classes
+- **Interactive Selection**: Choose from real Page Object getters with/without page parameters
 - **Intelligent Import Management**: Auto-adds imports at proper locations
 - **Cursor-Based Insertion**: Place const assignments exactly where you need them
 
 ### 🏗️ **Project Setup Commands**
 
 - **Create PageFactory**: Generate singleton PageFactory with worker isolation
-- **Add POMs to Factory**: Integrate existing Page Object Models
-- **Create POM Classes**: Generate new Page Object Model class templates
+- **Add Page Objects to Factory**: Integrate existing Page Object Models
+- **Create Page Object Classes**: Generate new Page Object Model class templates
 
 ### 🔧 **Code Generation Tools**
 
@@ -37,17 +37,17 @@ Open Command Palette (`Ctrl+Shift+P`) and run:
 SnapWright: Create Playwright PageFactory
 ```
 
-### 2. Add POM Classes
+### 2. Add Page Object Classes
 
 ```
 SnapWright: Add Page Objects to Factory
 ```
 
-### 3. Use POMs in Your Tests
+### 3. Use Page Objects in Your Tests
 
 1. **Open Command Palette**: `Ctrl+Shift+P`
-2. **Search**: "Use POM from PageFactory"
-3. **Select**: Your desired POM with/without page parameter
+2. **Search**: "Use Page Object from PageFactory"
+3. **Select**: Your desired Page Object with/without page parameter
 4. **Import Added**: Automatically placed at top of file
 5. **Place Cursor**: Move cursor where you want the const assignment
 6. **Click**: "Insert Here" to complete
@@ -55,7 +55,7 @@ SnapWright: Add Page Objects to Factory
 ## 💡 Example Workflow
 
 ```typescript
-// 1. Command Palette → "SnapWright: Use POM from PageFactory"
+// 1. Command Palette → "SnapWright: Use Page Object from PageFactory"
 // 2. Select: "const topicsPage = getTopicsPage(page)"
 // 3. Result:
 
@@ -177,39 +177,39 @@ Command: SnapWright: Create Playwright PageFactory
 - Implements `ensurePageSet()` helper for flexible page management
 - Generates proper TypeScript imports and exports
 
-#### 2. **Add POM Classes to PageFactory**
+#### 2. **Add Page Object Classes to PageFactory**
 
 ```
 Command: SnapWright: Add Page Objects to Factory
 ```
 
-- Scans directory for existing POM classes
+- Scans directory for existing Page Object classes
 - Smart duplicate detection prevents conflicts
 - Auto-generates getter methods with proper typing
 - Binds methods for export convenience
 
-#### 3. **Create POM Class**
+#### 3. **Create Page Object Class**
 
 ```
 Command: SnapWright: Create Page Object Class
 ```
 
-- Generates new POM class templates
+- Generates new Page Object class templates
 - Follows Playwright best practices
 - Includes constructor and method stubs
 
 ### Smart Usage Commands
 
-#### 4. **Use POM from PageFactory** ⭐ New!
+#### 4. **Use Page Object from PageFactory** ⭐ New!
 
 ```
-Command: SnapWright: Use POM from PageFactory
+Command: SnapWright: Use Page Object from PageFactory
 ```
 
 **Interactive Workflow:**
 
 1. **Dynamic Discovery**: Reads your actual PageFactory exports
-2. **Smart Selection**: Choose POM with/without page parameter
+2. **Smart Selection**: Choose Page Object with/without page parameter
 3. **Auto Import**: Adds imports at proper file location
 4. **Cursor Placement**: You control exactly where const goes
 5. **camelCase Variables**: Follows proper naming conventions
@@ -228,7 +228,7 @@ SnapWright includes useful snippets for common patterns:
 - **`pfinst`** - PageFactory instance reference
 - **`pfimport`** - Direct PageFactory imports
 - **`pfsetup`** - Complete setup with imports
-- **`pomclass`** - New POM class template
+- **`pageobjectclass`** - New Page Object class template
 - **`pfpage`** - Page setup pattern
 
 ## 🎨 Smart Features
@@ -245,7 +245,7 @@ SnapWright includes useful snippets for common patterns:
 - `ensurePageSet()` helper method for parallel tests
 - Flexible page parameter handling
 - Global page fallback with explicit page option
-- Thread-safe POM instance management
+- Thread-safe Page Object instance management
 
 ### ✅ **Developer Experience**
 
@@ -267,9 +267,9 @@ SnapWright/
 ├── src/
 │   └── extension.ts          # Main extension logic
 ├── snippets/
-│   └── pom-snippets.json     # Code snippets
+│   └── page-object-snippets.json     # Code snippets
 ├── examples/
-│   └── pages/                # Sample POM classes
+│   └── pages/                # Sample Page Object classes
 ├── docs/                     # Documentation
 ├── package.json              # Extension manifest
 └── README.md                 # This file
@@ -318,8 +318,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ### v1.3.0 (Latest)
 
-- ✨ **New**: Command Palette integration for POM usage
-- ✨ **New**: Interactive POM selection with real-time discovery
+- ✨ **New**: Command Palette integration for Page Object usage
+- ✨ **New**: Interactive Page Object selection with real-time discovery
 - ✨ **New**: Smart import management with proper positioning
 - ✨ **New**: camelCase variable naming conventions
 - ✨ **Improved**: Worker isolation support with `ensurePageSet()`
@@ -328,12 +328,12 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ### v1.2.0
 
 - ✨ Added PageFactory singleton pattern
-- ✨ Enhanced POM class integration
+- ✨ Enhanced Page Object class integration
 - 🐛 Fixed import path resolution
 
 ### v1.1.0
 
-- ✨ Initial POM generation features
+- ✨ Initial Page Object generation features
 - ✨ Basic snippets support
 
 ---
@@ -344,13 +344,13 @@ MIT License - see [LICENSE](LICENSE) file for details.
 import { pageFactory, setPage, page } from "./PageFactory";
 ```
 
-- **`pfprop`** - Access POM instances from PageFactory
+- **`pfprop`** - Access Page Object instances from PageFactory
 
   ```typescript
   const loginPage = pageFactory.loginPage;
   ```
 
-- **`pomclass`** - Creates a basic POM class template
+- **`pageobjectclass`** - Creates a basic Page Object class template
 
 ### 🔧 Enhanced Edge Case Handling
 
@@ -393,12 +393,12 @@ import { pageFactory, setPage, page } from "./PageFactory";
 3. Select a directory where you want to create the PageFactory
 4. The `PageFactory.ts` file will be created with the singleton pattern
 
-### 2. Adding POM Classes to PageFactory
+### 2. Adding Page Object Classes to PageFactory
 
-1. Create your POM classes in TypeScript files
+1. Create your Page Object classes in TypeScript files
 2. Open Command Palette
-3. Type "SnapWright: Add POM Classes to PageFactory"
-4. Select the directory containing your POM classes
+3. Type "SnapWright: Add Page Object Classes to PageFactory"
+4. Select the directory containing your Page Object classes
 5. Choose which classes to add to the PageFactory
 6. The PageFactory will be automatically updated with imports and singleton getters
 
@@ -407,8 +407,8 @@ import { pageFactory, setPage, page } from "./PageFactory";
 In any TypeScript file:
 
 - Type `pfinst` and press Tab to create a PageFactory instance reference
-- Type `pfprop` and press Tab to create a POM property reference
-- Type `pomclass` and press Tab to create a new POM class template
+- Type `pfprop` and press Tab to create a Page Object property reference
+- Type `pageobjectclass` and press Tab to create a new Page Object class template
 
 ## Example
 
@@ -482,7 +482,7 @@ test("login flow test", async ({ page }) => {
   // Set global page once
   setPage(page);
 
-  // Use POM classes directly - they automatically use the global page
+  // Use Page Object classes directly - they automatically use the global page
   await loginPage.navigate();
   await loginPage.login("username", "password");
 
@@ -513,9 +513,9 @@ test("using pageFactory instance", async ({ page }) => {
 ├── src/
 │   └── extension.ts          # Main extension logic
 ├── snippets/
-│   └── pom-snippets.json     # Code snippets definition
+│   └── page-object-snippets.json     # Code snippets definition
 ├── examples/
-│   └── pages/                # Sample POM classes
+│   └── pages/                # Sample Page Object classes
 ├── package.json              # Extension manifest
 ├── tsconfig.json            # TypeScript configuration
 └── .vscode/

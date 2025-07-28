@@ -9,7 +9,7 @@
 3. Select a directory (e.g., `src` or `tests`)
 4. PageFactory.ts will be created with Playwright integration
 
-### Step 2: Create POM Classes
+### Step 2: Create Page Object Classes
 
 Create your Page Object Model classes that use the global page from PageFactory:
 
@@ -33,11 +33,11 @@ export class LoginPage {
 }
 ```
 
-### Step 3: Add POM Classes to PageFactory
+### Step 3: Add Page Object Classes to PageFactory
 
 1. Open Command Palette
-2. Type "SnapWright: Add POM Classes to PageFactory"
-3. Select directory containing your POM classes
+2. Type "SnapWright: Add Page Object Classes to PageFactory"
+3. Select directory containing your Page Object classes
 4. Choose which classes to add
 5. PageFactory will be automatically updated with imports and direct exports
 
@@ -104,15 +104,15 @@ await page.goto("/login");
 import { pageFactory, setPage, page } from "./PageFactory";
 ```
 
-#### `pfprop` - Access POM Instances
+#### `pfprop` - Access Page Object Instances
 
 ```typescript
 const loginPage = pageFactory.loginPage;
 ```
 
-#### `pomclass` - Create POM Class Template
+#### `pageobjectclass` - Create Page Object Class Template
 
-Creates a new POM class with proper Playwright integration.
+Creates a new Page Object class with proper Playwright integration.
 
 ## Generated PageFactory Structure
 
@@ -124,7 +124,7 @@ The extension creates a PageFactory with these key features:
 - **Global Page Management**: Set page once, use everywhere
 - **Direct Exports**: Import exactly what you need
 - **Singleton Pattern**: Modern static getter approach
-- **Auto-instantiation**: POM classes created on first access
+- **Auto-instantiation**: Page Object classes created on first access
 
 ### Generated Code Example
 
@@ -190,11 +190,11 @@ export const getHomePage = pageFactory.getHomePage;
 - Sets up singleton pattern with direct exports
 - Includes global page management
 
-### 2. Add POM Classes to PageFactory
+### 2. Add Page Object Classes to PageFactory
 
-**Command**: `SnapWright: Add POM Classes to PageFactory`
+**Command**: `SnapWright: Add Page Object Classes to PageFactory`
 
-- Scans directory for TypeScript POM classes
+- Scans directory for TypeScript Page Object classes
 - **Smart Duplicate Detection**: Prevents adding existing classes
 - Automatically generates imports and getters
 - Updates direct exports
@@ -213,7 +213,7 @@ export const getHomePage = pageFactory.getHomePage;
 
 ```
 src/
-├── pages/                 # All POM classes
+├── pages/                 # All Page Object classes
 │   ├── LoginPage.ts
 │   ├── HomePage.ts
 │   ├── ProfilePage.ts
@@ -227,7 +227,7 @@ src/
     └── test-helpers.ts
 ```
 
-### 2. POM Class Design
+### 2. Page Object Class Design
 
 **✅ Good Practice:**
 
@@ -314,12 +314,12 @@ export class BasePage {
 
 #### 1. "Page not set" Error
 
-**Problem**: Trying to use POM classes before setting the global page
-**Solution**: Always call `setPage(page)` before using POM classes
+**Problem**: Trying to use Page Object classes before setting the global page
+**Solution**: Always call `setPage(page)` before using Page Object classes
 
 #### 2. Import Errors
 
-**Problem**: Cannot find PageFactory or POM classes
+**Problem**: Cannot find PageFactory or Page Object classes
 **Solution**: Check file paths and ensure exports are correct
 
 #### 3. Extension Commands Not Visible
@@ -331,7 +331,7 @@ export class BasePage {
 - Restart VS Code
 - Check extension is installed and enabled
 
-#### 4. POM Classes Not Added
+#### 4. Page Object Classes Not Added
 
 **Problem**: Classes aren't detected when adding to PageFactory
 **Solution**:
@@ -345,22 +345,22 @@ export class BasePage {
 1. **Check Examples**: Look at the generated `examples/` folder
 2. **Review Snippets**: Use code snippets for quick setup
 3. **Verify Structure**: Ensure proper project organization
-4. **Test Step by Step**: Start with simple POM classes first
+4. **Test Step by Step**: Start with simple Page Object classes first
 
 ## Example Workflows
 
 ### Workflow 1: New Project Setup
 
 1. Create PageFactory using command palette
-2. Create your first POM class (e.g., LoginPage)
-3. Add POM class to PageFactory using command
+2. Create your first Page Object class (e.g., LoginPage)
+3. Add Page Object class to PageFactory using command
 4. Write your first test using `pfsetup` snippet
-5. Expand with more POM classes as needed
+5. Expand with more Page Object classes as needed
 
 ### Workflow 2: Adding to Existing Project
 
 1. Create PageFactory in your test directory
-2. Use command to add existing POM classes
+2. Use command to add existing Page Object classes
 3. Update tests to use global page pattern
-4. Refactor POM classes to import global page
+4. Refactor Page Object classes to import global page
 5. Enjoy cleaner, more maintainable tests

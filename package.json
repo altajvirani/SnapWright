@@ -18,7 +18,7 @@
     "page-object-model",
     "test-automation",
     "e2e-testing",
-    "pom",
+    "page-object",
     "pageFactory",
     "productivity",
     "code-generator",
@@ -35,6 +35,81 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "SnapWright",
+      "properties": {
+        "snapwright.fileExtensions.pageObject": {
+          "type": "string",
+          "default": ".page.ts",
+          "description": "File extension for Page Object classes"
+        },
+        "snapwright.fileExtensions.pageFactory": {
+          "type": "string",
+          "default": ".ts",
+          "description": "File extension for PageFactory files"
+        },
+        "snapwright.fileExtensions.typescript": {
+          "type": "string",
+          "default": ".ts",
+          "description": "TypeScript file extension"
+        },
+        "snapwright.namingConventions.classSuffix": {
+          "type": "string",
+          "default": "Page",
+          "description": "Suffix to append to Page Object class names"
+        },
+        "snapwright.namingConventions.propertyPrefix": {
+          "type": "string",
+          "default": "_",
+          "description": "Prefix for private properties in PageFactory"
+        },
+        "snapwright.namingConventions.fileNameCase": {
+          "type": "string",
+          "enum": [
+            "camelCase",
+            "kebab-case",
+            "snake_case"
+          ],
+          "default": "camelCase",
+          "description": "Naming convention for generated file names"
+        },
+        "snapwright.validation.classNamePattern": {
+          "type": "string",
+          "default": "^[a-zA-Z][a-zA-Z0-9]*$",
+          "description": "Regex pattern for validating class names"
+        },
+        "snapwright.validation.fileNamePattern": {
+          "type": "string",
+          "default": "^[a-zA-Z][a-zA-Z0-9]*$",
+          "description": "Regex pattern for validating file names"
+        },
+        "snapwright.validation.preventNesting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prevent creating nested PageFactories to maintain architectural boundaries"
+        },
+        "snapwright.importPaths.defaultPrefix": {
+          "type": "string",
+          "default": "./",
+          "description": "Default prefix for import paths"
+        },
+        "snapwright.importPaths.useRelativePaths": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to use relative import paths"
+        },
+        "snapwright.templates.pageFactory": {
+          "type": "string",
+          "default": "",
+          "description": "Custom template for PageFactory class (leave empty for default)"
+        },
+        "snapwright.templates.pageObjectClass": {
+          "type": "string",
+          "default": "",
+          "description": "Custom template for Page Object classes (use ${className} as placeholder)"
+        }
+      }
+    },
     "commands": [
       {
         "command": "snapwright.createPageFactory",
@@ -42,22 +117,22 @@
         "category": "SnapWright"
       },
       {
-        "command": "snapwright.addPOMToFactory",
+        "command": "snapwright.addPageObjectToFactory",
         "title": "Add Page Objects to Factory",
         "category": "SnapWright"
       },
       {
-        "command": "snapwright.createPOMClass",
+        "command": "snapwright.createPageObjectClass",
         "title": "Create Page Object Class",
         "category": "SnapWright"
       },
       {
-        "command": "snapwright.usePOMFromFactory",
+        "command": "snapwright.usePageObjectFromFactory",
         "title": "Use Page Object from PageFactory",
         "category": "SnapWright"
       },
       {
-        "command": "snapwright.removePOMFromFactory",
+        "command": "snapwright.removePageObjectFromFactory",
         "title": "Remove Page Object from PageFactory",
         "category": "SnapWright"
       },
@@ -75,7 +150,7 @@
     "snippets": [
       {
         "language": "typescript",
-        "path": "./snippets/pom-snippets.json"
+        "path": "./snippets/page-object-snippets.json"
       }
     ]
   },
