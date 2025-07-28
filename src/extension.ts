@@ -5,6 +5,34 @@ import * as path from "path";
 // Global variable to store extension context for state management
 let extensionContext: vscode.ExtensionContext;
 
+// Utility function for consistent PageFactory detection across the extension
+function isPageFactoryFile(filePath: string): boolean {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+
+    // Enhanced detection: Look for exact class name "PageFactory"
+    const classPatterns = [
+      /export\s+class\s+PageFactory\b/, // export class PageFactory
+      /class\s+PageFactory\b/, // class PageFactory (any visibility)
+      /export\s+default\s+class\s+PageFactory\b/, // export default class PageFactory
+    ];
+
+    // Also check for instance patterns (backward compatibility)
+    const instancePatterns = [
+      /PageFactory\.instance/, // PageFactory.instance
+      /export\s+const\s+pageFactory/, // export const pageFactory
+    ];
+
+    return (
+      classPatterns.some((pattern) => pattern.test(content)) ||
+      instancePatterns.some((pattern) => pattern.test(content))
+    );
+  } catch (error) {
+    // If we can't read the file, fall back to filename check as last resort
+    return path.basename(filePath).toLowerCase().includes("pagefactory");
+  }
+}
+
 // Configuration interface for dynamic settings
 interface ExtensionConfig {
   fileExtensions: {
@@ -131,14 +159,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  // Register command to validate architectural integrity
-  let validateArchitecturalIntegrityCommand = vscode.commands.registerCommand(
-    "snapwright.validateArchitecturalIntegrity",
-    async () => {
-      await validateArchitecturalIntegrity();
-    }
-  );
-
   context.subscriptions.push(createPageFactoryCommand);
   context.subscriptions.push(addPageObjectToFactoryCommand);
   context.subscriptions.push(createPageObjectClassCommand);
@@ -146,7 +166,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(removePageObjectFromFactoryCommand);
   context.subscriptions.push(deletePageFactoryCommand);
   context.subscriptions.push(cleanupOrphanedPageObjectsCommand);
-  context.subscriptions.push(validateArchitecturalIntegrityCommand);
 }
 
 // Helper function to check for PageFactory nesting
@@ -158,6 +177,11 @@ function checkForPageFactoryNesting(selectedPath: string): {
 } {
   const extensionConfig = getExtensionConfig();
 
+  // Helper function to check if a file is PageFactory by content
+  function isPageFactoryByContent(filePath: string): boolean {
+    return isPageFactoryFile(filePath);
+  }
+
   // Check for parent PageFactory by walking up the directory tree
   let currentPath = path.dirname(selectedPath);
   let hasParentPageFactory = false;
@@ -168,8 +192,8 @@ function checkForPageFactoryNesting(selectedPath: string): {
     const items = fs.readdirSync(currentPath);
     const pageFactoryFile = items.find(
       (item) =>
-        item.includes("PageFactory") &&
-        item.endsWith(extensionConfig.fileExtensions.pageFactory)
+        item.endsWith(extensionConfig.fileExtensions.typescript) &&
+        isPageFactoryByContent(path.join(currentPath, item))
     );
 
     if (pageFactoryFile) {
@@ -202,8 +226,8 @@ function checkForPageFactoryNesting(selectedPath: string): {
           const subItems = fs.readdirSync(fullPath);
           const pageFactoryFile = subItems.find(
             (subItem) =>
-              subItem.includes("PageFactory") &&
-              subItem.endsWith(extensionConfig.fileExtensions.pageFactory)
+              subItem.endsWith(extensionConfig.fileExtensions.typescript) &&
+              isPageFactoryByContent(path.join(fullPath, subItem))
           );
 
           if (pageFactoryFile) {
@@ -234,96 +258,6 @@ function checkForPageFactoryNesting(selectedPath: string): {
   };
 }
 
-// Enhanced circular reference detection for architectural integrity
-function checkForCircularPageObjectUsage(
-  currentFilePath: string,
-  pageFactoryPath: string
-): {
-  isCircular: boolean;
-  currentClassName?: string;
-  getterMethodName?: string;
-  message?: string;
-} {
-  try {
-    // Check if current file is a Page Object class
-    const currentFileContent = fs.readFileSync(currentFilePath, "utf8");
-    const currentClassMatch = currentFileContent.match(
-      /export\s+class\s+(\w+)/
-    );
-
-    if (!currentClassMatch) {
-      return { isCircular: false }; // Not a class file
-    }
-
-    const currentClassName = currentClassMatch[1];
-
-    // Check if PageFactory exists and imports this class
-    if (!fs.existsSync(pageFactoryPath)) {
-      return { isCircular: false }; // No PageFactory to check
-    }
-
-    const pageFactoryContent = fs.readFileSync(pageFactoryPath, "utf8");
-
-    // Check if this class is imported in PageFactory
-    const importPattern = new RegExp(
-      `import\\s+\\{[^}]*\\b${currentClassName}\\b[^}]*\\}\\s+from\\s+['"][^'"]*`,
-      "g"
-    );
-    const hasImport = importPattern.test(pageFactoryContent);
-
-    if (!hasImport) {
-      return { isCircular: false }; // Not managed by PageFactory
-    }
-
-    // Check if there's a getter method for this class
-    const getterPattern = new RegExp(
-      `(get\\w+)\\s*\\([^)]*\\)\\s*:\\s*${currentClassName}`,
-      "g"
-    );
-    const getterMatch = pageFactoryContent.match(getterPattern);
-
-    if (getterMatch && getterMatch.length > 0) {
-      const fullGetterMatch = getterMatch[0];
-      const getterNameMatch = fullGetterMatch.match(/(get\w+)/);
-      const getterMethodName = getterNameMatch ? getterNameMatch[1] : null;
-
-      if (getterMethodName) {
-        return {
-          isCircular: true,
-          currentClassName,
-          getterMethodName,
-          message: `Cannot use "${getterMethodName}()" within the ${currentClassName} class itself. This would create a circular dependency.`,
-        };
-      }
-    }
-
-    // Also check for convention-based getters (e.g., getLoginPage for LoginPage class)
-    const conventionGetterPattern = new RegExp(
-      `(get${currentClassName})\\s*\\(`,
-      "i"
-    );
-    if (conventionGetterPattern.test(pageFactoryContent)) {
-      const getterNameMatch = pageFactoryContent.match(
-        new RegExp(`(get${currentClassName})\\s*\\(`, "i")
-      );
-      const getterMethodName = getterNameMatch ? getterNameMatch[1] : null;
-
-      if (getterMethodName) {
-        return {
-          isCircular: true,
-          currentClassName,
-          getterMethodName,
-          message: `Cannot use "${getterMethodName}()" within the ${currentClassName} class itself. This would create a circular dependency.`,
-        };
-      }
-    }
-
-    return { isCircular: false };
-  } catch (error) {
-    return { isCircular: false }; // Error reading files, assume no circular reference
-  }
-}
-
 async function createPageFactory() {
   try {
     // Get workspace folders
@@ -352,7 +286,7 @@ async function createPageFactory() {
           nestingCheck.parentPath!
         );
         const action = await vscode.window.showWarningMessage(
-          `A PageFactory already exists in a parent directory at "${relativePath}". Creating nested PageFactories is not recommended as it violates architectural boundaries.\n\nDo you want to continue anyway?`,
+          `A PageFactory already exists in a parent directory at "${relativePath}". Creating nested PageFactories may cause confusion.\n\nDo you want to continue anyway?`,
           "Continue Anyway",
           "Choose Different Location",
           "Cancel"
@@ -373,7 +307,7 @@ async function createPageFactory() {
           nestingCheck.childPath!
         );
         const action = await vscode.window.showWarningMessage(
-          `A PageFactory already exists in a subdirectory at "${relativePath}". Creating a parent PageFactory over existing ones is not recommended as it violates architectural boundaries.\n\nDo you want to continue anyway?`,
+          `A PageFactory already exists in a subdirectory at "${relativePath}". Creating a parent PageFactory over existing ones may cause confusion.\n\nDo you want to continue anyway?`,
           "Continue Anyway",
           "Choose Different Location",
           "Cancel"
@@ -715,21 +649,6 @@ function findTSFiles(dirPath: string): string[] {
   const files: string[] = [];
   const extensionConfig = getExtensionConfig();
 
-  function isPageFactoryFile(filePath: string): boolean {
-    try {
-      const content = fs.readFileSync(filePath, "utf8");
-      // Check if file contains PageFactory class definition
-      return (
-        content.includes("class PageFactory") ||
-        content.includes("PageFactory.instance") ||
-        content.includes("export const pageFactory")
-      );
-    } catch (error) {
-      // If we can't read the file, check by filename
-      return path.basename(filePath).includes("PageFactory");
-    }
-  }
-
   function walkDir(currentPath: string) {
     const items = fs.readdirSync(currentPath);
 
@@ -782,8 +701,8 @@ async function findPageFactory(
         ) {
           walkDir(fullPath);
         } else if (
-          item.includes("PageFactory") &&
-          item.endsWith(extensionConfig.fileExtensions.pageFactory)
+          item.endsWith(extensionConfig.fileExtensions.typescript) &&
+          isPageFactoryFile(fullPath)
         ) {
           files.push(fullPath);
         }
@@ -1286,16 +1205,9 @@ function generatePageObjectClassTemplate(className: string): string {
     );
   }
 
-  // Default template with architectural guidance
+  // Default template
   return `// Import page from PageFactory for general page operations
 import { page } from '../PageFactory';
-
-/**
- * ⚠️  ARCHITECTURAL NOTE: 
- * Do NOT import get${className}() from PageFactory in this file.
- * This would create a circular dependency. Use the SnapWright 
- * command "Use Page Object from PageFactory" in test files instead.
- */
 
 export class ${className} {
     // Page selectors, elements, and locators go here
@@ -1356,46 +1268,10 @@ async function usePageObjectFromFactory() {
       return;
     }
 
-    // Check for circular reference using enhanced validation
-    const circularCheck = checkForCircularPageObjectUsage(
-      editor.document.uri.fsPath,
-      pageFactoryPath
-    );
-
-    // If circular reference detected, show detailed warning and stop
-    if (circularCheck.isCircular) {
-      const currentFileName = path.basename(editor.document.uri.fsPath, ".ts");
-      vscode.window
-        .showWarningMessage(
-          `🚫 Circular Reference Prevented!\n\n${circularCheck.message}\n\nArchitectural Rule: Page Object classes should not import their own PageFactory getters. This maintains clean separation of concerns.\n\nSuggestion: Use this command from test files, spec files, or other Page Objects instead.`,
-          {
-            title: "Learn More",
-            action: "learnMore",
-          },
-          {
-            title: "Understood",
-            action: "dismiss",
-          }
-        )
-        .then((selection) => {
-          if (selection?.action === "learnMore") {
-            vscode.env.openExternal(
-              vscode.Uri.parse(
-                "https://github.com/your-repo/snapwright#architectural-guidelines"
-              )
-            );
-          }
-        });
-      return;
-    }
-
-    // All getters are available - no circular reference issues
-    const availableGetters = pageObjectGetters;
-
     // Create quick pick items with available Page Objects
     const quickPickItems: vscode.QuickPickItem[] = [];
 
-    for (const getter of availableGetters) {
+    for (const getter of pageObjectGetters) {
       const pageObjectName = getter.replace("get", ""); // Keep original case
       const camelCaseName =
         pageObjectName.charAt(0).toLowerCase() + pageObjectName.slice(1); // Convert to camelCase
@@ -1896,71 +1772,6 @@ function findImportInsertionPosition(content: string): number {
   return importInsertLine;
 }
 
-// Helper function to detect circular reference
-async function detectCircularReference(
-  currentFilePath: string,
-  pageFactoryPath: string
-): Promise<string | null> {
-  try {
-    // Read PageFactory content
-    const pageFactoryContent = fs.readFileSync(pageFactoryPath, "utf8");
-
-    // Get the current file's class name
-    const currentFileContent = fs.readFileSync(currentFilePath, "utf8");
-    const currentClassMatch = currentFileContent.match(
-      /export\s+class\s+(\w+)/
-    );
-
-    if (!currentClassMatch) {
-      return null; // Not a class file
-    }
-
-    const currentClassName = currentClassMatch[1];
-
-    // Check if this class is imported in PageFactory
-    const importPattern = new RegExp(
-      `import\\s+\\{[^}]*\\b${currentClassName}\\b[^}]*\\}\\s+from\\s+['"][^'"]*`,
-      "g"
-    );
-    const hasImport = importPattern.test(pageFactoryContent);
-
-    if (!hasImport) {
-      return null; // Not imported in PageFactory, so no circular reference possible
-    }
-
-    // Check if there's a getter method that returns this class
-    const getterPattern = new RegExp(
-      `(get\\w+)\\s*\\([^)]*\\)\\s*:\\s*${currentClassName}`,
-      "g"
-    );
-    const getterMatch = pageFactoryContent.match(getterPattern);
-
-    if (getterMatch && getterMatch.length > 0) {
-      // Extract the getter method name
-      const fullGetterMatch = getterMatch[0];
-      const getterNameMatch = fullGetterMatch.match(/(get\w+)/);
-      return getterNameMatch ? getterNameMatch[1] : null;
-    }
-
-    // Also check for cases where the class might be used in getter methods without explicit type annotation
-    // Look for patterns like "get<ClassName>" or similar
-    const classBasedGetterPattern = new RegExp(
-      `get${currentClassName}\\s*\\(`,
-      "i"
-    );
-    if (classBasedGetterPattern.test(pageFactoryContent)) {
-      const getterNameMatch = pageFactoryContent.match(
-        new RegExp(`(get${currentClassName})\\s*\\(`, "i")
-      );
-      return getterNameMatch ? getterNameMatch[1] : null;
-    }
-
-    return null;
-  } catch (error) {
-    return null; // Error reading files, assume no circular reference
-  }
-}
-
 // Extract Page Object getter methods from PageFactory
 async function extractPageObjectGetters(
   pageFactoryPath: string
@@ -2108,17 +1919,21 @@ async function addPageFactoryPath(
   const paths = getSavedPageFactoryPaths();
   const existingIndex = paths.findIndex((p) => p.path === filePath);
 
-  const pathEntry: SavedPageFactoryPath = {
-    path: filePath,
-    label: label || path.basename(path.dirname(filePath)),
-    lastUsed: Date.now(),
-  };
-
   if (existingIndex >= 0) {
-    // Update existing entry
-    paths[existingIndex] = pathEntry;
+    // Update existing entry - preserve existing label if no new label provided
+    const existingEntry = paths[existingIndex];
+    paths[existingIndex] = {
+      path: filePath,
+      label: label !== undefined ? label : existingEntry.label,
+      lastUsed: Date.now(),
+    };
   } else {
-    // Add new entry
+    // Add new entry - use provided label or default to directory name
+    const pathEntry: SavedPageFactoryPath = {
+      path: filePath,
+      label: label || path.basename(path.dirname(filePath)),
+      lastUsed: Date.now(),
+    };
     paths.push(pathEntry);
   }
 
@@ -2249,13 +2064,11 @@ async function browseForPageFactory(): Promise<string | null> {
 
   // Verify it's a valid PageFactory file
   try {
-    const content = fs.readFileSync(selectedPath, "utf8");
-    if (
-      !content.includes("class PageFactory") &&
-      !content.includes("PageFactory")
-    ) {
+    const isValidPageFactory = isPageFactoryFile(selectedPath);
+
+    if (!isValidPageFactory) {
       const proceed = await vscode.window.showWarningMessage(
-        "The selected file doesn't appear to be a PageFactory. Continue anyway?",
+        "The selected file doesn't appear to contain a PageFactory class. Continue anyway?",
         "Yes",
         "No"
       );
@@ -2385,232 +2198,4 @@ async function editSavedPaths(): Promise<string | null> {
   }
 
   return null;
-}
-
-// Validate architectural integrity across the workspace
-async function validateArchitecturalIntegrity() {
-  try {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders) {
-      vscode.window.showErrorMessage("No workspace folder found");
-      return;
-    }
-
-    vscode.window.showInformationMessage(
-      "🔍 Scanning workspace for architectural violations..."
-    );
-
-    const issues: string[] = [];
-    const workspacePath = workspaceFolders[0].uri.fsPath;
-
-    // Find all PageFactory files
-    const pageFactoryFiles = await findAllPageFactoryFiles(workspacePath);
-
-    if (pageFactoryFiles.length === 0) {
-      vscode.window.showInformationMessage(
-        "✅ No PageFactory files found in workspace."
-      );
-      return;
-    }
-
-    // Check each PageFactory for issues
-    for (const pageFactoryPath of pageFactoryFiles) {
-      const pageFactoryIssues = await validatePageFactoryIntegrity(
-        pageFactoryPath
-      );
-      issues.push(...pageFactoryIssues);
-    }
-
-    // Find all TypeScript files that might be Page Objects
-    const pageObjectFiles = await findAllPageObjectFiles(workspacePath);
-
-    // Check each potential Page Object for circular references
-    for (const pageObjectFile of pageObjectFiles) {
-      for (const pageFactoryPath of pageFactoryFiles) {
-        const circularCheck = checkForCircularPageObjectUsage(
-          pageObjectFile,
-          pageFactoryPath
-        );
-        if (circularCheck.isCircular) {
-          // Check if the file actually contains the problematic import
-          const fileContent = fs.readFileSync(pageObjectFile, "utf8");
-          const importPattern = new RegExp(
-            `import\\s+\\{[^}]*\\b${circularCheck.getterMethodName}\\b[^}]*\\}`,
-            "g"
-          );
-
-          if (importPattern.test(fileContent)) {
-            const fileName = path.relative(workspacePath, pageObjectFile);
-            issues.push(
-              `🚫 ${fileName}: Contains circular import "${circularCheck.getterMethodName}" - ${circularCheck.message}`
-            );
-          }
-        }
-      }
-    }
-
-    // Show results
-    if (issues.length === 0) {
-      vscode.window.showInformationMessage(
-        "✅ Architectural Integrity Check Complete: No violations found!"
-      );
-    } else {
-      const issueReport = issues.join("\n\n");
-      const action = await vscode.window.showWarningMessage(
-        `⚠️ Found ${issues.length} architectural violation(s):\n\n${issueReport}\n\nWould you like to see detailed guidance?`,
-        "Show Guidance",
-        "Dismiss"
-      );
-
-      if (action === "Show Guidance") {
-        // Open a new untitled document with the full report and guidance
-        const fullReport = `# SnapWright Architectural Integrity Report\n\n## Issues Found:\n\n${issueReport}\n\n## Architectural Guidelines:\n\n1. **No Circular References**: Page Object classes should not import their own PageFactory getters\n2. **Clean Separation**: Use PageFactory getters in test files, not within the Page Objects themselves\n3. **No Nested PageFactories**: PageFactory files should not be nested within each other\n\n## How to Fix:\n\n- Remove circular imports from Page Object files\n- Use SnapWright commands to properly structure your code\n- Keep PageFactory usage in test files and spec files\n\nFor more information, visit: https://github.com/your-repo/snapwright#architectural-guidelines`;
-
-        const doc = await vscode.workspace.openTextDocument({
-          content: fullReport,
-          language: "markdown",
-        });
-        await vscode.window.showTextDocument(doc);
-      }
-    }
-  } catch (error) {
-    vscode.window.showErrorMessage(
-      `Error during architectural validation: ${error}`
-    );
-  }
-}
-
-// Helper function to find all PageFactory files in workspace
-async function findAllPageFactoryFiles(
-  workspacePath: string
-): Promise<string[]> {
-  const extensionConfig = getExtensionConfig();
-  const pageFactoryFiles: string[] = [];
-
-  function searchDirectory(dirPath: string) {
-    try {
-      const items = fs.readdirSync(dirPath);
-
-      for (const item of items) {
-        const fullPath = path.join(dirPath, item);
-        const stat = fs.statSync(fullPath);
-
-        if (
-          stat.isDirectory() &&
-          !item.startsWith(".") &&
-          item !== "node_modules"
-        ) {
-          searchDirectory(fullPath);
-        } else if (
-          item.includes("PageFactory") &&
-          item.endsWith(extensionConfig.fileExtensions.pageFactory)
-        ) {
-          pageFactoryFiles.push(fullPath);
-        }
-      }
-    } catch (error) {
-      // Ignore permission errors
-    }
-  }
-
-  searchDirectory(workspacePath);
-  return pageFactoryFiles;
-}
-
-// Helper function to find all potential Page Object files
-async function findAllPageObjectFiles(
-  workspacePath: string
-): Promise<string[]> {
-  const extensionConfig = getExtensionConfig();
-  const pageObjectFiles: string[] = [];
-
-  function searchDirectory(dirPath: string) {
-    try {
-      const items = fs.readdirSync(dirPath);
-
-      for (const item of items) {
-        const fullPath = path.join(dirPath, item);
-        const stat = fs.statSync(fullPath);
-
-        if (
-          stat.isDirectory() &&
-          !item.startsWith(".") &&
-          item !== "node_modules"
-        ) {
-          searchDirectory(fullPath);
-        } else if (
-          item.endsWith(extensionConfig.fileExtensions.typescript) &&
-          !item.includes("PageFactory")
-        ) {
-          // Check if it's a class file (potential Page Object)
-          try {
-            const content = fs.readFileSync(fullPath, "utf8");
-            if (/export\s+class\s+\w+/.test(content)) {
-              pageObjectFiles.push(fullPath);
-            }
-          } catch (error) {
-            // Skip files that can't be read
-          }
-        }
-      }
-    } catch (error) {
-      // Ignore permission errors
-    }
-  }
-
-  searchDirectory(workspacePath);
-  return pageObjectFiles;
-}
-
-// Validate a specific PageFactory for integrity issues
-async function validatePageFactoryIntegrity(
-  pageFactoryPath: string
-): Promise<string[]> {
-  const issues: string[] = [];
-  const workspacePath =
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "";
-  const fileName = path.relative(workspacePath, pageFactoryPath);
-
-  try {
-    // Check for nesting issues
-    const nestingCheck = checkForPageFactoryNesting(pageFactoryPath);
-
-    if (nestingCheck.hasParentPageFactory) {
-      issues.push(
-        `🏗️ ${fileName}: Nested inside another PageFactory at ${path.relative(
-          workspacePath,
-          nestingCheck.parentPath || ""
-        )}`
-      );
-    }
-
-    if (nestingCheck.hasChildPageFactory) {
-      issues.push(
-        `🏗️ ${fileName}: Contains nested PageFactory at ${path.relative(
-          workspacePath,
-          nestingCheck.childPath || ""
-        )}`
-      );
-    }
-
-    // Check for orphaned imports
-    const orphanedPageObjects = await extractPageObjectsFromPageFactory(
-      pageFactoryPath
-    );
-    for (const pageObject of orphanedPageObjects) {
-      const pageObjectPath = path.resolve(
-        path.dirname(pageFactoryPath),
-        pageObject.importPath + ".ts"
-      );
-      if (!fs.existsSync(pageObjectPath)) {
-        issues.push(
-          `🔗 ${fileName}: References non-existent Page Object "${pageObject.className}" at ${pageObject.importPath}`
-        );
-      }
-    }
-  } catch (error) {
-    issues.push(`❌ ${fileName}: Error reading file - ${error}`);
-  }
-
-  return issues;
 }

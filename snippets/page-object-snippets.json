@@ -45,7 +45,7 @@
       "setPage(${2:yourPageInstance});",
       "",
       "// Access Page Object instances using Command Palette:",
-      "// Ctrl+Shift+P -> 'SnapWright: Use Page Object from PageFactory'"
+      "// Ctrl+Shift+P -> 'SnapWright: Use Page Object from Page Factory'"
     ],
     "description": "Complete PageFactory setup pattern with Command Palette guidance"
   },
