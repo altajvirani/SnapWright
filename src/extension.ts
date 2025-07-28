@@ -258,19 +258,19 @@ function checkForPageFactoryNesting(selectedPath: string): {
   };
 }
 
-async function createPageFactory() {
+async function createPageFactory(openFileAfterCreation: boolean = true): Promise<string | undefined> {
   try {
     // Get workspace folders
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) {
       vscode.window.showErrorMessage("No workspace folder found");
-      return;
+      return undefined;
     }
 
     // Step 1: Show directory picker for PageFactory location
     const selectedFolder = await selectDirectory(workspaceFolders[0].uri);
     if (!selectedFolder) {
-      return;
+      return undefined;
     }
 
     // Get extension configuration for validation
@@ -293,7 +293,7 @@ async function createPageFactory() {
         );
 
         if (action === "Cancel") {
-          return;
+          return undefined;
         } else if (action === "Choose Different Location") {
           // Recursively call the function to let user choose again
           return await createPageFactory();
@@ -314,7 +314,7 @@ async function createPageFactory() {
         );
 
         if (action === "Cancel") {
-          return;
+          return undefined;
         } else if (action === "Choose Different Location") {
           // Recursively call the function to let user choose again
           return await createPageFactory();
@@ -346,7 +346,7 @@ async function createPageFactory() {
       });
 
       if (!pageFactoryName) {
-        return; // User cancelled
+        return undefined; // User cancelled
       }
 
       pageFactoryName = pageFactoryName.trim();
@@ -366,7 +366,7 @@ async function createPageFactory() {
         );
 
         if (action === "Cancel") {
-          return;
+          return undefined;
         } else if (action === "Overwrite Existing") {
           isValidName = true;
         }
@@ -391,15 +391,21 @@ async function createPageFactory() {
     // Step 6: Save to persistent storage
     await addPageFactoryPath(pageFactoryPath, pageFactoryName);
 
-    // Open the created file
-    const document = await vscode.workspace.openTextDocument(pageFactoryPath);
-    await vscode.window.showTextDocument(document);
+    // Conditionally open the created file
+    if (openFileAfterCreation) {
+      const document = await vscode.workspace.openTextDocument(pageFactoryPath);
+      await vscode.window.showTextDocument(document);
+    }
 
     vscode.window.showInformationMessage(
       `PageFactory "${pageFactoryName}${extensionConfig.fileExtensions.pageFactory}" created successfully and saved to your PageFactory list!`
     );
+
+    // Return the path of the created PageFactory
+    return pageFactoryPath;
   } catch (error) {
     vscode.window.showErrorMessage(`Error creating PageFactory: ${error}`);
+    return undefined;
   }
 }
 
@@ -1174,18 +1180,105 @@ async function createPageObjectClass() {
       return;
     }
 
-    // Generate Page Object class content
-    const pageObjectContent = generatePageObjectClassTemplate(className);
+    // Choose instantiation pattern
+    interface PatternQuickPickItem extends vscode.QuickPickItem {
+      value: "global" | "parameter";
+    }
+
+    const instantiationPattern =
+      await vscode.window.showQuickPick<PatternQuickPickItem>(
+        [
+          {
+            label: "$(globe) Use global page from PageFactory",
+            description: "Import page from PageFactory (recommended)",
+            detail: "import { page } from '../PageFactory'",
+            value: "global",
+          },
+          {
+            label: "$(arrow-right) Accept page as parameter",
+            description: "Inject page through constructor",
+            detail: "constructor(private page: Page)",
+            value: "parameter",
+          },
+        ],
+        {
+          placeHolder:
+            "Choose how this Page Object will access the page instance",
+          title: "Page Object Instantiation Pattern",
+        }
+      );
+
+    if (!instantiationPattern) {
+      return;
+    }
+
+    // Find PageFactory for dynamic import path resolution
+    let pageFactoryPath: string | undefined;
+    let relativeImportPath = "../PageFactory"; // Default fallback
+
+    if (instantiationPattern.value === "global") {
+      pageFactoryPath = await findPageFactory(workspaceFolders[0].uri.fsPath);
+      if (pageFactoryPath) {
+        relativeImportPath = getRelativePageFactoryPath(
+          filePath,
+          pageFactoryPath
+        );
+      } else {
+        const createFactory = await vscode.window.showWarningMessage(
+          "No PageFactory found. Would you like to create one first?",
+          "Create PageFactory",
+          "Continue Anyway"
+        );
+
+        if (createFactory === "Create PageFactory") {
+          // Store the POM creation context to continue after PageFactory creation
+          console.log("Creating PageFactory during POM creation...");
+          const newPageFactoryPath = await createPageFactory(false); // Don't open PageFactory file
+          console.log("PageFactory creation result:", newPageFactoryPath);
+          if (newPageFactoryPath) {
+            // PageFactory was successfully created, calculate the import path and continue
+            relativeImportPath = getRelativePageFactoryPath(
+              filePath,
+              newPageFactoryPath
+            );
+            console.log("Calculated relative import path:", relativeImportPath);
+            vscode.window.showInformationMessage(
+              "PageFactory created! Continuing with POM creation..."
+            );
+          } else {
+            // PageFactory creation failed or was cancelled
+            vscode.window.showErrorMessage(
+              "PageFactory creation failed. POM creation cancelled."
+            );
+            return;
+          }
+        }
+      }
+    }
+
+    // Generate Page Object class content with chosen pattern
+    console.log("Generating POM content with pattern:", instantiationPattern.value, "and import path:", relativeImportPath);
+    const pageObjectContent = generatePageObjectClassTemplate(
+      className,
+      instantiationPattern.value,
+      relativeImportPath
+    );
 
     // Write the file
+    console.log("Writing POM file to:", filePath);
     fs.writeFileSync(filePath, pageObjectContent);
 
     // Open the new file
     const document = await vscode.workspace.openTextDocument(filePath);
     await vscode.window.showTextDocument(document);
 
+    const patternDescription =
+      instantiationPattern.value === "global"
+        ? "with global page import"
+        : "with page parameter";
+
     vscode.window.showInformationMessage(
-      `Successfully created ${className}${extensionConfig.fileExtensions.pageObject} Page Object class!`
+      `Successfully created ${className}${extensionConfig.fileExtensions.pageObject} Page Object class ${patternDescription}!`
     );
   } catch (error) {
     console.error("Error creating Page Object class:", error);
@@ -1194,7 +1287,11 @@ async function createPageObjectClass() {
 }
 
 // Function to generate Page Object class template
-function generatePageObjectClassTemplate(className: string): string {
+function generatePageObjectClassTemplate(
+  className: string,
+  pattern: "global" | "parameter" = "global",
+  pageFactoryImportPath: string = "../PageFactory"
+): string {
   const extensionConfig = getExtensionConfig();
 
   // Use custom template if provided
@@ -1205,18 +1302,44 @@ function generatePageObjectClassTemplate(className: string): string {
     );
   }
 
-  // Default template
+  // Generate template based on chosen pattern
+  if (pattern === "parameter") {
+    return `import { Page } from '@playwright/test';
+
+export class ${className} {
+    // Page selectors, elements, and locators go here
+
+    public constructor(private page: Page) {
+        // Initialize page elements and setup
+        // Use this.page for all page operations
+    }
+
+    // Add your page-specific methods here
+    // Example:
+    // async clickElement() {
+    //     await this.page.click('selector');
+    // }
+}
+`;
+  }
+
+  // Default global page pattern
   return `// Import page from PageFactory for general page operations
-import { page } from '../PageFactory';
+import { page } from '${pageFactoryImportPath}';
 
 export class ${className} {
     // Page selectors, elements, and locators go here
 
     public constructor() {
         // Initialize page elements and setup
+        // Use imported 'page' for all page operations
     }
 
     // Add your page-specific methods here
+    // Example:
+    // async clickElement() {
+    //     await page.click('selector');
+    // }
 }
 `;
 }
