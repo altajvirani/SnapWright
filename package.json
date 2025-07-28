@@ -113,7 +113,7 @@
     "commands": [
       {
         "command": "snapwright.createPageFactory",
-        "title": "Create Playwright PageFactory",
+        "title": "Create PageFactory",
         "category": "SnapWright"
       },
       {
@@ -144,6 +144,11 @@
       {
         "command": "snapwright.cleanupOrphanedPageObjects",
         "title": "Cleanup Orphaned Page Objects",
+        "category": "SnapWright"
+      },
+      {
+        "command": "snapwright.validateArchitecturalIntegrity",
+        "title": "Validate Architectural Integrity",
         "category": "SnapWright"
       }
     ],

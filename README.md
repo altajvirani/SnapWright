@@ -21,7 +21,14 @@ A Visual Studio Code extension that supercharges your Playwright TypeScript deve
 - **Add Page Objects to Factory**: Integrate existing Page Object Models
 - **Create Page Object Classes**: Generate new Page Object Model class templates
 
-### 🔧 **Code Generation Tools**
+### �️ **Architectural Integrity**
+
+- **Circular Reference Prevention**: Automatically prevents Page Objects from importing their own PageFactory getters
+- **Real-time Validation**: Smart detection of architectural violations during development
+- **Clear Warning Messages**: Detailed explanations when violations are detected
+- **Workspace Scanning**: Command to validate entire project architectural integrity
+
+### �🔧 **Code Generation Tools**
 
 - **camelCase Variables**: Proper JavaScript/TypeScript naming conventions
 - **Smart Import Positioning**: Respects comments, ESLint configs, and existing imports
@@ -34,7 +41,7 @@ A Visual Studio Code extension that supercharges your Playwright TypeScript deve
 Open Command Palette (`Ctrl+Shift+P`) and run:
 
 ```
-SnapWright: Create Playwright PageFactory
+SnapWright: Create PageFactory
 ```
 
 ### 2. Add Page Object Classes
@@ -170,7 +177,7 @@ test("parallel test 2", async ({ page }) => {
 #### 1. **Create PageFactory**
 
 ```
-Command: SnapWright: Create Playwright PageFactory
+Command: SnapWright: Create PageFactory
 ```
 
 - Creates a singleton PageFactory with worker isolation support
@@ -220,6 +227,43 @@ Command: SnapWright: Use Page Object from PageFactory
 - `const topicsPage = getTopicsPage(page)`
 - `const homePage = getHomePage()`
 - `const loginPage = getLoginPage(page)`
+
+#### 5. **Validate Architectural Integrity** 🛡️ New!
+
+```
+Command: SnapWright: Validate Architectural Integrity
+```
+
+**Comprehensive Project Validation:**
+
+1. **Circular Reference Detection**: Prevents Page Objects from importing their own PageFactory getters
+2. **Workspace Scanning**: Validates entire project for architectural violations
+3. **Real-time Warnings**: Shows detailed messages when violations are detected
+4. **Best Practice Guidelines**: Provides recommendations for proper Page Object architecture
+
+**Example Violation Detection:**
+
+```typescript
+// ❌ VIOLATION: LoginPage importing its own getter
+import { getLoginPage } from "../PageFactory";
+
+export class LoginPage {
+  // This creates a circular dependency!
+}
+```
+
+**Proper Architecture:**
+
+```typescript
+// ✅ CORRECT: Page Objects are used in tests, not self-referencing
+// test-file.spec.ts
+import { getLoginPage } from "../PageFactory";
+
+test("login functionality", async ({ page }) => {
+  const loginPage = getLoginPage(page);
+  // Use loginPage methods...
+});
+```
 
 ## 📋 Code Snippets
 
