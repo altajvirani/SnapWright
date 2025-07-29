@@ -10,6 +10,32 @@ Generate PageFactories, manage Page Objects, and streamline test development wit
 2. **Add Page Objects**: `Ctrl+Shift+P` → "SnapWright: Add Page Object to Page Factory"
 3. **Use in Tests**: `Ctrl+Shift+P` → "SnapWright: Use Page Object from Page Factory"
 
+## 🎬 Visual Demonstrations
+
+### Creating Page Factory
+![Create Page Factory](demos/Create%20Page%20Factory.gif)
+
+### Adding Page Objects to Factory
+![Add Page Objects to Page Factory](demos/Add%20Page%20Objects%20to%20Page%20Factory.gif)
+
+### Using Page Objects in Tests
+![Use Page Object from Page Factory](demos/Use%20Page%20Object%20from%20Page%20Factory.gif)
+
+### Creating Page Objects with Page Parameter
+![Create Page Object by passing page](demos/Create%20Page%20Object%20by%20passing%20page.gif)
+
+### Complete Workflow: Create, Inject & Use
+![Create Page Object, Create Page Factory and inject in it](demos/Create%20Page%20Object,%20Create%20Page%20Factory%20and%20inject%20in%20it.gif)
+
+### Safe Deletion with Reference Checking
+![Restriction of Page Object Deletion if References](demos/Restriction%20of%20Page%20Object%20Deletion%20if%20References.gif)
+
+### Clean Deletion and Cleanup
+![Delete Injected Page Object and Clean-up](demos/Delete%20Injected%20Page%20Object%20and%20Clean-up.gif)
+
+### Deleting Page Factory
+![Delete Page Factory](demos/Delete%20Page%20Factory.gif)
+
 ## 📋 Commands
 
 | Command                             | Description                                       |
